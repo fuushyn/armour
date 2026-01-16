@@ -189,7 +189,7 @@ This prevents tools from different servers with the same name from colliding.
 ## Feedback & Contributing
 
 Found a bug? Have a feature request? Visit:
-https://github.com/devel12/armour/issues
+https://github.com/fuushyn/armour/issues
 
 ## License
 
