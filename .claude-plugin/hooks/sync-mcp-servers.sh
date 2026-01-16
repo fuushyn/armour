@@ -1,27 +1,34 @@
 #!/bin/bash
-# Auto-sync MCP servers added via 'claude mcp add' to Sentinel registry
+# Auto-sync MCP servers added via 'claude mcp add' to Armour registry
 # This runs on SessionStart and:
-# 1. Scans all projects for new servers added via 'claude mcp add'
-# 2. Syncs them to the sentinel registry
-# 3. Removes them from project config so all connections route through sentinel
+# 1. Migrates old sentinel registry if it exists
+# 2. Scans all projects for new servers added via 'claude mcp add'
+# 3. Syncs them to the armour registry
+# 4. Removes them from project config so all connections route through armour
 #
-# This hook is automatically installed with the mcp-go-proxy plugin.
+# This hook is automatically installed with the armour plugin.
 # See ~/.claude-plugin/README.md for troubleshooting.
 
 set -e
 
 HOME_DIR="$HOME"
 CLAUDE_CONFIG="$HOME_DIR/.claude.json"
-SENTINEL_REGISTRY="$HOME_DIR/.claude/mcp-proxy/servers.json"
-MCP_PROXY_DIR="$HOME_DIR/.claude/mcp-proxy"
+ARMOUR_REGISTRY="$HOME_DIR/.armour/servers.json"
+ARMOUR_DIR="$HOME_DIR/.armour"
+OLD_SENTINEL_REGISTRY="$HOME_DIR/.claude/mcp-proxy/servers.json"
 
-# Create MCP proxy directory if it doesn't exist
-if [ ! -d "$MCP_PROXY_DIR" ]; then
-  mkdir -p "$MCP_PROXY_DIR"
+# Create armour directory if it doesn't exist
+if [ ! -d "$ARMOUR_DIR" ]; then
+  mkdir -p "$ARMOUR_DIR"
+fi
+
+# Migrate from old sentinel registry if it exists and new one doesn't
+if [ -f "$OLD_SENTINEL_REGISTRY" ] && [ ! -f "$ARMOUR_REGISTRY" ]; then
+  cp "$OLD_SENTINEL_REGISTRY" "$ARMOUR_REGISTRY"
 fi
 
 # Initialize registry if it doesn't exist
-if [ ! -f "$SENTINEL_REGISTRY" ]; then
+if [ ! -f "$ARMOUR_REGISTRY" ]; then
   python3 << 'INIT_PYTHON'
 import json
 import os
@@ -34,7 +41,7 @@ registry = {
   },
   "servers": []
 }
-registry_path = os.path.expanduser("~/.claude/mcp-proxy/servers.json")
+registry_path = os.path.expanduser("~/.armour/servers.json")
 os.makedirs(os.path.dirname(registry_path), exist_ok=True)
 with open(registry_path, "w") as f:
   json.dump(registry, f, indent=2)
@@ -46,7 +53,7 @@ if [ ! -f "$CLAUDE_CONFIG" ]; then
   exit 0
 fi
 
-# Python script to setup sentinel proxy and sync servers
+# Python script to setup armour proxy and sync servers
 python3 << 'EOF'
 import json
 import os
@@ -55,32 +62,32 @@ import shutil
 home = os.path.expanduser("~")
 claude_config_path = os.path.join(home, ".claude.json")
 mcp_config_path = os.path.join(home, ".claude", ".mcp.json")
-registry_path = os.path.join(home, ".claude", "mcp-proxy", "servers.json")
+registry_path = os.path.join(home, ".armour", "servers.json")
 
 # CLAUDE_PLUGIN_ROOT is provided by Claude Code's hook execution context
 # It points to the plugin root directory
-plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", os.path.expanduser("~/.claude-plugin/mcp-go-proxy"))
-proxy_binary = os.path.join(plugin_root, "mcp-proxy")
+plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", os.path.expanduser("~/.claude/plugins/cache/armour-marketplace/armour/1.0.0"))
+proxy_binary = os.path.join(plugin_root, "armour")
 
-# Initialize or update sentinel proxy in ~/.claude/.mcp.json
-def setup_sentinel_proxy():
+# Initialize or update armour proxy in ~/.claude/.mcp.json
+def setup_armour_proxy():
     try:
         with open(mcp_config_path) as f:
             mcp_config = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         mcp_config = {"mcpServers": {}}
 
-    # Check if sentinel is already configured
-    if "sentinel" not in mcp_config.get("mcpServers", {}):
+    # Check if armour is already configured
+    if "armour" not in mcp_config.get("mcpServers", {}):
         mcp_config["mcpServers"] = mcp_config.get("mcpServers", {})
-        mcp_config["mcpServers"]["sentinel"] = {
+        mcp_config["mcpServers"]["armour"] = {
             "command": proxy_binary,
             "args": ["-mode", "stdio", "-config", registry_path],
             "env": {
-                "MCP_PROXY_CONFIG": registry_path,
-                "MCP_PROXY_POLICY": "moderate"
+                "ARMOUR_CONFIG": registry_path,
+                "ARMOUR_POLICY": "moderate"
             },
-            "description": "Sentinel Security Proxy"
+            "description": "Armour Security Proxy"
         }
 
         # Ensure directory exists
@@ -89,12 +96,12 @@ def setup_sentinel_proxy():
         with open(mcp_config_path, "w") as f:
             json.dump(mcp_config, f, indent=2)
 
-setup_sentinel_proxy()
+setup_armour_proxy()
 
 # Now sync servers
 home = os.path.expanduser("~")
 claude_config_path = os.path.join(home, ".claude.json")
-registry_path = os.path.join(home, ".claude", "mcp-proxy", "servers.json")
+registry_path = os.path.join(home, ".armour", "servers.json")
 
 # Read Claude config with all projects
 try:
@@ -121,8 +128,8 @@ for project_path, project_config in all_projects.items():
     project_servers = project_config.get("mcpServers", {})
 
     for server_name, server_config in project_servers.items():
-        # Skip sentinel to avoid recursion
-        if server_name in ["sentinel", "mcp-proxy", "mcp-go-proxy"]:
+        # Skip armour to avoid recursion, and old proxy names
+        if server_name in ["armour", "sentinel", "mcp-proxy", "mcp-go-proxy"]:
             continue
 
         # Skip if already in registry
