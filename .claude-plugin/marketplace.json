@@ -1,50 +1,23 @@
 {
-  "version": "1.0.0",
+  "name": "Armour Marketplace",
+  "owner": {
+    "name": "fuushyn",
+    "url": "https://github.com/fuushyn"
+  },
   "plugins": [
     {
       "name": "armour",
-      "displayName": "Armour",
       "version": "1.0.0",
       "description": "Security-enhanced MCP proxy with policy controls. Block destructive tool calls, audit all operations, and safely use multiple MCP servers with centralized policies.",
-      "author": "fuushyn",
-      "repository": {
-        "type": "git",
-        "url": "https://github.com/fuushyn/armour.git"
+      "author": {
+        "name": "fuushyn",
+        "url": "https://github.com/fuushyn"
       },
+      "repository": "https://github.com/fuushyn/armour",
       "homepage": "https://github.com/fuushyn/armour",
-      "icon": "🛡️",
       "license": "MIT",
-      "keywords": [
-        "mcp",
-        "security",
-        "proxy",
-        "tools",
-        "ai-safety",
-        "policy",
-        "audit"
-      ],
-      "capabilities": {
-        "tools": {
-          "listChanged": true
-        },
-        "sampling": {
-          "tools": true
-        }
-      },
-      "features": [
-        "Block destructive tool calls",
-        "Audit all MCP operations",
-        "Multiple security policy modes",
-        "Aggregate multiple MCP servers",
-        "Session isolation",
-        "Centralized policy controls"
-      ],
-      "installation": {
-        "type": "repository",
-        "url": "https://github.com/fuushyn/armour",
-        "ref": "main",
-        "installPath": ".claude-plugin"
-      }
+      "keywords": ["mcp", "security", "proxy", "tools", "ai-safety"],
+      "source": "github"
     }
   ]
 }
