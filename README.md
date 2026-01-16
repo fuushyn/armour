@@ -1,15 +1,15 @@
-# MCP Go Proxy
+# Armour
 
 > 🛡️ **A security-enhanced proxy for MCP servers** - Block destructive AI tool calls, centralize policies, and audit everything.
 
 [![Destructive Calls Blocked](https://img.shields.io/badge/Destructive_Calls_Blocked-0-brightgreen?style=flat-square)](.)
-[![Go Report Card](https://goreportcard.com/badge/github.com/yourusername/mcp-go-proxy)](https://goreportcard.com/report/github.com/yourusername/mcp-go-proxy)
+[![Go Report Card](https://goreportcard.com/badge/github.com/fuushyn/armour)](https://goreportcard.com/report/github.com/fuushyn/armour)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub Stars](https://img.shields.io/github/stars/yourusername/mcp-go-proxy?style=flat-square)](.)
+[![GitHub Stars](https://img.shields.io/github/stars/fuushyn/armour?style=flat-square)](.)
 
 ## What is it?
 
-MCP Go Proxy is a lightweight, transparent proxy that sits between Claude Code and your MCP servers, providing:
+Armour is a lightweight, transparent proxy that sits between Claude Code and your MCP servers, providing:
 
 - **🔒 Security**: Block destructive tool calls (rm*, delete*, drop*, etc.) before they execute
 - **📊 Audit Trail**: Complete visibility into every tool call with timestamps and results
@@ -23,8 +23,7 @@ MCP Go Proxy is a lightweight, transparent proxy that sits between Claude Code a
 ### As a Claude Code Plugin
 
 ```bash
-/plugin install mcp-go-proxy
-/proxy-setup
+/plugin install armour
 ```
 
 That's it! The wizard will:
@@ -37,16 +36,16 @@ That's it! The wizard will:
 
 ```bash
 # Build from source
-go build -o mcp-proxy .
+go build -o armour .
 
 # Detect existing servers
-./mcp-proxy detect
+./armour detect
 
 # Run as stdio MCP server (for Claude Code)
-./mcp-proxy -mode stdio -config servers.json
+./armour -mode stdio -config servers.json
 
 # Run as HTTP proxy
-./mcp-proxy -mode http -config servers.json -listen :8080
+./armour -mode http -config servers.json -listen :8080
 ```
 
 ## Features
@@ -105,7 +104,7 @@ Access real-time monitoring at `http://localhost:9090`:
            │ JSON-RPC 2.0 / stdio
            ▼
 ┌─────────────────────────────────────┐
-│     MCP Go Proxy (stdio mode)       │
+│     Armour (stdio mode)             │
 │  ┌─────────────────────────────────┐│
 │  │ Tool Registry (namespacing)     ││
 │  │ • github:create_issue            ││
@@ -137,7 +136,7 @@ Access real-time monitoring at `http://localhost:9090`:
 
 ## Configuration
 
-Configuration lives in `~/.claude/mcp-proxy/servers.json`:
+Configuration lives in `~/.armour/servers.json`:
 
 ```json
 {
@@ -164,22 +163,22 @@ Configuration lives in `~/.claude/mcp-proxy/servers.json`:
 
 ```bash
 # Detect MCP servers in standard locations
-mcp-proxy detect
+armour detect
 
 # Auto-discover project MCP servers
-mcp-proxy up
+armour up
 
 # Run in stdio mode (for Claude Code)
-mcp-proxy -mode stdio -config servers.json
+armour -mode stdio -config servers.json
 
 # Run in HTTP mode with dashboard
-mcp-proxy -mode http -config servers.json -listen :8080
+armour -mode http -config servers.json -listen :8080
 
 # Show help
-mcp-proxy help
+armour help
 
 # Show version
-mcp-proxy version
+armour version
 ```
 
 ## Use Cases
@@ -272,9 +271,9 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- 📖 [Documentation](https://github.com/yourusername/mcp-go-proxy)
-- 🐛 [Report Issues](https://github.com/yourusername/mcp-go-proxy/issues)
-- 💬 [Discussions](https://github.com/yourusername/mcp-go-proxy/discussions)
+- 📖 [Documentation](https://github.com/fuushyn/armour)
+- 🐛 [Report Issues](https://github.com/fuushyn/armour/issues)
+- 💬 [Discussions](https://github.com/fuushyn/armour/discussions)
 
 ---
 
