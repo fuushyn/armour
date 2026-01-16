@@ -7,24 +7,9 @@
     "url": "https://github.com/fuushyn"
   },
   "homepage": "https://github.com/fuushyn/armour",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/fuushyn/armour.git"
-  },
+  "repository": "https://github.com/fuushyn/armour",
   "license": "MIT",
   "keywords": ["mcp", "security", "proxy", "tools", "ai-safety"],
-  "commands": [
-    {
-      "name": "armour",
-      "description": "Armour security proxy management (setup, status, dashboard)",
-      "file": "commands/setup.md"
-    }
-  ],
-  "permissions": {
-    "filesystem": ["read", "write"],
-    "shell": ["/bin/sh", "curl"]
-  },
-  "hooks": {
-    "path": "hooks/hooks.json"
-  }
+  "commands": ["./commands/setup.md"],
+  "hooks": ["./hooks/hooks.json"]
 }
