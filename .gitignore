@@ -1,0 +1,44 @@
+# Binaries
+*.o
+*.a
+*.so
+mcp-proxy
+test-proxy
+
+# Build output
+bin/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Go
+go.sum
+vendor/
+
+# Logs
+*.log
+
+# Local development
+.claude/
+dashboard/node_modules/
+*.db
+audit.db
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Environment files (don't commit secrets!)
+.env
+.env.local
+.env.*.local
+
+# Config that varies per environment
+servers.json

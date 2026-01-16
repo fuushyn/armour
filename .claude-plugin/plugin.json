@@ -1,0 +1,30 @@
+{
+  "name": "armour",
+  "version": "1.0.0",
+  "description": "Security-enhanced MCP proxy with policy controls. Block destructive tool calls, audit all operations, and safely use multiple MCP servers with centralized policies.",
+  "author": {
+    "name": "devel12",
+    "url": "https://github.com/devel12"
+  },
+  "homepage": "https://github.com/devel12/armour",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devel12/armour.git"
+  },
+  "license": "MIT",
+  "keywords": ["mcp", "security", "proxy", "tools", "ai-safety"],
+  "commands": [
+    {
+      "name": "armour",
+      "description": "Armour security proxy management (setup, status, dashboard)",
+      "file": "commands/setup.md"
+    }
+  ],
+  "permissions": {
+    "filesystem": ["read", "write"],
+    "shell": ["/bin/sh", "curl"]
+  },
+  "hooks": {
+    "path": "hooks/hooks.json"
+  }
+}

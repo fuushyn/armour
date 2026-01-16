@@ -1,0 +1,15 @@
+{
+  "description": "Auto-sync newly added MCP servers to Sentinel registry",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/sync-mcp-servers.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
