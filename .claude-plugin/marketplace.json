@@ -1,5 +1,5 @@
 {
-  "name": "Armour Marketplace",
+  "name": "armour-marketplace",
   "owner": {
     "name": "fuushyn",
     "url": "https://github.com/fuushyn"
@@ -16,8 +16,7 @@
       "repository": "https://github.com/fuushyn/armour",
       "homepage": "https://github.com/fuushyn/armour",
       "license": "MIT",
-      "keywords": ["mcp", "security", "proxy", "tools", "ai-safety"],
-      "source": "github"
+      "keywords": ["mcp", "security", "proxy", "tools", "ai-safety"]
     }
   ]
 }
