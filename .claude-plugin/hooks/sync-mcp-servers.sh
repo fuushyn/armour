@@ -77,24 +77,30 @@ def setup_armour_proxy():
     except (FileNotFoundError, json.JSONDecodeError):
         mcp_config = {"mcpServers": {}}
 
-    # Check if armour is already configured
-    if "armour" not in mcp_config.get("mcpServers", {}):
-        mcp_config["mcpServers"] = mcp_config.get("mcpServers", {})
-        mcp_config["mcpServers"]["armour"] = {
-            "command": proxy_binary,
-            "args": ["-mode", "stdio", "-config", registry_path],
-            "env": {
-                "ARMOUR_CONFIG": registry_path,
-                "ARMOUR_POLICY": "moderate"
-            },
-            "description": "Armour Security Proxy"
-        }
+    # Ensure mcpServers dict exists
+    mcp_config["mcpServers"] = mcp_config.get("mcpServers", {})
 
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(mcp_config_path), exist_ok=True)
+    # Remove old proxy names to avoid conflicts
+    for old_name in ["sentinel", "mcp-proxy", "mcp-go-proxy"]:
+        if old_name in mcp_config["mcpServers"]:
+            del mcp_config["mcpServers"][old_name]
 
-        with open(mcp_config_path, "w") as f:
-            json.dump(mcp_config, f, indent=2)
+    # Always ensure armour is properly configured
+    mcp_config["mcpServers"]["armour"] = {
+        "command": proxy_binary,
+        "args": ["-mode", "stdio", "-config", registry_path],
+        "env": {
+            "ARMOUR_CONFIG": registry_path,
+            "ARMOUR_POLICY": "moderate"
+        },
+        "description": "Armour Security Proxy"
+    }
+
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(mcp_config_path), exist_ok=True)
+
+    with open(mcp_config_path, "w") as f:
+        json.dump(mcp_config, f, indent=2)
 
 setup_armour_proxy()
 
