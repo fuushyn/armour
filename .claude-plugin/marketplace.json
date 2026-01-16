@@ -9,10 +9,7 @@
       "name": "armour",
       "version": "1.0.0",
       "description": "Security-enhanced MCP proxy with policy controls",
-      "source": {
-        "source": "github",
-        "repo": "fuushyn/armour"
-      }
+      "source": "https://github.com/fuushyn/armour.git"
     }
   ]
 }
