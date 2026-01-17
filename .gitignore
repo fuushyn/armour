@@ -42,3 +42,12 @@ temp/
 
 # Config that varies per environment
 servers.json
+
+# Documentation (kept locally but not committed)
+BUILD_COMPLETE.md
+CLAUDE_CODE_NOTES.md
+COMPILATION_FIXES.md
+IMPLEMENTATION_SUMMARY.md
+PLUGIN_INSTALLATION.md
+QUICKSTART.md
+understanding.md
