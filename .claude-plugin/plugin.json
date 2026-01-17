@@ -10,6 +10,6 @@
   "repository": "https://github.com/fuushyn/armour",
   "license": "MIT",
   "keywords": ["mcp", "security", "proxy", "tools", "ai-safety"],
-  "commands": ["./.claude-plugin/commands/setup.md"],
-  "hooks": ["./.claude-plugin/hooks/hooks.json"]
+  "commands": ["./commands/setup.md"],
+  "hooks": ["./hooks/hooks.json"]
 }
