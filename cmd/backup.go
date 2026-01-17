@@ -154,19 +154,52 @@ func RestoreBackup() error {
 	}
 
 	fmt.Printf("\n✓ Restoration complete from backup (timestamp: %s)\n", backup.Timestamp)
-	fmt.Println("\n⚠️  CRITICAL NEXT STEP:")
-	fmt.Println("   The Armour plugin MUST be DISABLED before restarting Claude Code.")
-	fmt.Println("   Otherwise, the SessionStart hook will immediately re-sync and revert this restore.")
-	fmt.Println("\n📋 What to do now:")
-	fmt.Println("   1. Run: /plugin")
-	fmt.Println("   2. Select 'armour'")
-	fmt.Println("   3. Click 'Disable plugin'")
-	fmt.Println("   4. Then restart Claude Code")
-	fmt.Println("   5. Verify your MCP configs are restored correctly")
-	fmt.Println("   6. When ready, re-enable the Armour plugin via /plugin")
-	fmt.Println("\nDO NOT restart Claude Code until the plugin is disabled!")
+
+	// Disable the plugin to prevent SessionStart hook from re-syncing
+	if err := disableArmourPlugin(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not disable plugin: %v\n", err)
+		fmt.Println("\n⚠️  Please manually disable the Armour plugin before restarting:")
+		fmt.Println("   1. Run: /plugin")
+		fmt.Println("   2. Select 'armour'")
+		fmt.Println("   3. Click 'Disable plugin'")
+	} else {
+		fmt.Println("\n✓ Plugin automatically disabled")
+	}
+
+	fmt.Println("\n📋 Next steps:")
+	fmt.Println("   1. Restart Claude Code")
+	fmt.Println("   2. Verify your MCP configs are restored correctly")
+	fmt.Println("   3. When ready, re-enable the Armour plugin via /plugin")
 
 	return nil
+}
+
+// disableArmourPlugin disables the armour plugin in ~/.claude/settings.json
+func disableArmourPlugin() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %v", err)
+	}
+
+	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
+	data, err := readJSON(settingsPath)
+	if err != nil {
+		return fmt.Errorf("failed to read settings: %v", err)
+	}
+
+	// Get or create enabledPlugins object
+	enabledPlugins := make(map[string]interface{})
+	if ep, ok := data["enabledPlugins"]; ok {
+		if epMap, ok := ep.(map[string]interface{}); ok {
+			enabledPlugins = epMap
+		}
+	}
+
+	// Disable armour plugin
+	enabledPlugins["armour@armour-marketplace"] = false
+	data["enabledPlugins"] = enabledPlugins
+
+	return writeJSON(settingsPath, data)
 }
 
 // Helper functions
