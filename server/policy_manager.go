@@ -26,15 +26,17 @@ type PolicyManager struct {
 	auditLog          *proxy.AuditLog
 	blockedTools      map[string]bool      // Tools blocked by this policy
 	allowedOperations map[string]bool      // Allowed operations (if in restrictive mode)
+	stats             *StatsTracker        // Track blocked/allowed calls
 	mu                sync.RWMutex
 }
 
 // NewPolicyManager creates a new policy manager with moderate mode as default.
-func NewPolicyManager() *PolicyManager {
+func NewPolicyManager(stats *StatsTracker) *PolicyManager {
 	return &PolicyManager{
 		mode:              ModerateMode,
 		blockedTools:      make(map[string]bool),
 		allowedOperations: make(map[string]bool),
+		stats:             stats,
 	}
 }
 
@@ -91,15 +93,16 @@ func (pm *PolicyManager) ApplyToRequest(req JSONRPCRequest, backendID string) er
 	pm.mu.RLock()
 	mode := pm.mode
 	blockedTools := pm.blockedTools
+	stats := pm.stats
 	pm.mu.RUnlock()
 
 	switch mode {
 	case StrictMode:
-		return pm.applyStrictMode(req, backendID, blockedTools)
+		return pm.applyStrictMode(req, backendID, blockedTools, stats)
 	case ModerateMode:
-		return pm.applyModerateMode(req, backendID, blockedTools)
+		return pm.applyModerateMode(req, backendID, blockedTools, stats)
 	case PermissiveMode:
-		return pm.applyPermissiveMode(req, backendID)
+		return pm.applyPermissiveMode(req, backendID, stats)
 	default:
 		return fmt.Errorf("unknown policy mode: %s", mode)
 	}
@@ -108,14 +111,20 @@ func (pm *PolicyManager) ApplyToRequest(req JSONRPCRequest, backendID string) er
 // applyStrictMode enforces maximum security policies.
 // Blocks: sampling, elicitation, custom operations
 // Allows: read-only operations
-func (pm *PolicyManager) applyStrictMode(req JSONRPCRequest, backendID string, blockedTools map[string]bool) error {
+func (pm *PolicyManager) applyStrictMode(req JSONRPCRequest, backendID string, blockedTools map[string]bool, stats *StatsTracker) error {
 	switch req.Method {
 	case "initialize":
 		// Allow initialization but disable advanced capabilities
+		if stats != nil {
+			stats.RecordAllowedCall("initialize")
+		}
 		return nil
 
 	case "tools/list":
 		// Allow listing tools
+		if stats != nil {
+			stats.RecordAllowedCall("tools/list")
+		}
 		return nil
 
 	case "tools/call":
@@ -129,32 +138,50 @@ func (pm *PolicyManager) applyStrictMode(req JSONRPCRequest, backendID string, b
 
 		// Check exact match and wildcard patterns
 		if isToolBlocked(params.Name, blockedTools) {
+			if stats != nil {
+				stats.RecordBlockedCall(params.Name, "strict_policy")
+			}
 			return fmt.Errorf("tool blocked by strict policy: %s", params.Name)
 		}
 
+		if stats != nil {
+			stats.RecordAllowedCall(params.Name)
+		}
 		return nil
 
 	case "resources/list", "resources/read":
 		// Allow safe resource operations
+		if stats != nil {
+			stats.RecordAllowedCall(req.Method)
+		}
 		return nil
 
 	case "resources/subscribe", "resources/unsubscribe":
 		// Block in strict mode
+		if stats != nil {
+			stats.RecordBlockedCall(req.Method, "strict_policy")
+		}
 		return fmt.Errorf("resource subscriptions blocked by strict policy")
 
 	case "prompts/list", "prompts/get":
 		// Allow safe prompt operations
+		if stats != nil {
+			stats.RecordAllowedCall(req.Method)
+		}
 		return nil
 
 	default:
 		// Block unknown methods in strict mode
+		if stats != nil {
+			stats.RecordBlockedCall(req.Method, "strict_policy")
+		}
 		return fmt.Errorf("method blocked by strict policy: %s", req.Method)
 	}
 }
 
 // applyModerateMode enforces balanced policies.
 // Allows most operations but blocks obviously destructive ones.
-func (pm *PolicyManager) applyModerateMode(req JSONRPCRequest, backendID string, blockedTools map[string]bool) error {
+func (pm *PolicyManager) applyModerateMode(req JSONRPCRequest, backendID string, blockedTools map[string]bool, stats *StatsTracker) error {
 	switch req.Method {
 	case "tools/call":
 		// Check if tool is blocked
@@ -167,24 +194,49 @@ func (pm *PolicyManager) applyModerateMode(req JSONRPCRequest, backendID string,
 
 		// Check blocklist
 		if isToolBlocked(params.Name, blockedTools) {
+			if stats != nil {
+				stats.RecordBlockedCall(params.Name, "policy_blocklist")
+			}
 			return fmt.Errorf("tool blocked by policy: %s", params.Name)
 		}
 
 		// Check common destructive patterns
 		if isDestructivePattern(params.Name) {
+			if stats != nil {
+				stats.RecordBlockedCall(params.Name, "destructive_pattern")
+			}
 			return fmt.Errorf("destructive tool blocked by moderate policy: %s", params.Name)
 		}
 
+		if stats != nil {
+			stats.RecordAllowedCall(params.Name)
+		}
 		return nil
 
 	default:
 		// Allow everything else in moderate mode
+		if stats != nil {
+			stats.RecordAllowedCall(req.Method)
+		}
 		return nil
 	}
 }
 
 // applyPermissiveMode allows all operations with minimal restrictions.
-func (pm *PolicyManager) applyPermissiveMode(req JSONRPCRequest, backendID string) error {
+func (pm *PolicyManager) applyPermissiveMode(req JSONRPCRequest, backendID string, stats *StatsTracker) error {
+	// Record all calls in permissive mode (audit only)
+	if stats != nil {
+		if req.Method == "tools/call" {
+			var params struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(req.Params, &params); err == nil {
+				stats.RecordAllowedCall(params.Name)
+			}
+		} else {
+			stats.RecordAllowedCall(req.Method)
+		}
+	}
 	// No restrictions in permissive mode
 	return nil
 }

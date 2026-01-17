@@ -107,7 +107,7 @@ func runStdioMode(ctx context.Context, config server.Config) error {
 	}
 
 	statsTracker := server.NewStatsTracker()
-	policyManager := server.NewPolicyManager()
+	policyManager := server.NewPolicyManager(statsTracker)
 	logger := proxy.NewLogger(config.LogLevel)
 
 	// 2. Start Dashboard (Dual-Head)
