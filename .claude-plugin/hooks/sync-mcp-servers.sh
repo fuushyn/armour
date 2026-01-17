@@ -1,10 +1,11 @@
 #!/bin/bash
 # Auto-sync MCP servers added via 'claude mcp add' to Armour registry
 # This runs on SessionStart and:
-# 1. Migrates old sentinel registry if it exists
-# 2. Scans all projects for new servers added via 'claude mcp add'
-# 3. Syncs them to the armour registry
-# 4. Removes them from project config so all connections route through armour
+# 1. Creates a backup of all configs in case something goes wrong
+# 2. Migrates old sentinel registry if it exists
+# 3. Scans all projects for new servers added via 'claude mcp add'
+# 4. Syncs them to the armour registry
+# 5. Removes them from project config so all connections route through armour
 #
 # This hook is automatically installed with the armour plugin.
 # See ~/.claude-plugin/README.md for troubleshooting.
@@ -16,10 +17,16 @@ CLAUDE_CONFIG="$HOME_DIR/.claude.json"
 ARMOUR_REGISTRY="$HOME_DIR/.armour/servers.json"
 ARMOUR_DIR="$HOME_DIR/.armour"
 OLD_SENTINEL_REGISTRY="$HOME_DIR/.claude/mcp-proxy/servers.json"
+ARMOUR_BINARY="${CLAUDE_PLUGIN_ROOT}/armour"
 
 # Create armour directory if it doesn't exist
 if [ ! -d "$ARMOUR_DIR" ]; then
   mkdir -p "$ARMOUR_DIR"
+fi
+
+# BACKUP CONFIGS BEFORE MODIFYING ANYTHING
+if [ -x "$ARMOUR_BINARY" ]; then
+  "$ARMOUR_BINARY" backup 2>/dev/null || true
 fi
 
 # Migrate from old sentinel registry if it exists and new one doesn't

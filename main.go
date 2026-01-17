@@ -34,6 +34,12 @@ func main() {
 		case "status":
 			handleStatusCommand()
 			return
+		case "backup":
+			handleBackupCommand()
+			return
+		case "recover":
+			handleRecoverCommand()
+			return
 		case "version":
 			fmt.Println("mcp-proxy v1.0.0")
 			return
@@ -283,6 +289,20 @@ func convertCLIArgsToServerConfig(args cmd.CLIArgs) server.Config {
 		DBPath:         args.DBPath,
 		ConfigPath:     args.ConfigPath,
 		AllowedOrigins: origins,
+	}
+}
+
+func handleBackupCommand() {
+	if err := cmd.CreateBackup(); err != nil {
+		fmt.Fprintf(os.Stderr, "backup failed: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleRecoverCommand() {
+	if err := cmd.RestoreBackup(); err != nil {
+		fmt.Fprintf(os.Stderr, "recovery failed: %v\n", err)
+		os.Exit(1)
 	}
 }
 
