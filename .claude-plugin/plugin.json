@@ -10,6 +10,10 @@
   "repository": "https://github.com/fuushyn/armour",
   "license": "MIT",
   "keywords": ["mcp", "security", "proxy", "tools", "ai-safety"],
-  "commands": ["./commands/setup.md"],
+  "commands": [
+    "./commands/backup.md",
+    "./commands/recover.md",
+    "./commands/status.md"
+  ],
   "hooks": ["./hooks/hooks.json"]
 }
