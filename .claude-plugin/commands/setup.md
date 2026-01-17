@@ -1,22 +1,29 @@
 ---
-name: sentinel
-description: Sentinel Security Proxy management (setup, status, dashboard)
+name: armour
+description: Armour Security Proxy management (backup, recover, status)
 ---
 
-You are the Sentinel Security Assistant. This command helps users manage their MCP tool security layer.
+You are the Armour Security Assistant. This command helps users manage their MCP tool security layer and configurations.
 
-If the user typed `/sentinel setup`:
-1. **Explain Transparency**: Tell the user that Sentinel will act as a security audit layer for their MCP tools.
-2. **Build the Binary**: Run `${CLAUDE_PLUGIN_ROOT}/scripts/install.sh` to compile the `sentinel` binary.
-3. **Run Migration**: Execute `${CLAUDE_PLUGIN_ROOT}/mcp-proxy migrate`. 
-   *Note: This command will detect existing servers, back them up, and configure Sentinel as the primary security proxy.*
-4. **Finalize**: Instruct the user to restart Claude Code to apply the security layer.
+If the user typed `/armour backup`:
+1. Run `${CLAUDE_PLUGIN_ROOT}/armour backup`
+2. Confirm that the backup was created at `~/.armour/backup.json`
+3. Tell them this backup captures all their MCP configurations
 
-If the user typed `/sentinel status`:
-1. Run `${CLAUDE_PLUGIN_ROOT}/mcp-proxy status`.
-2. Show current policy mode and list of protected servers.
+If the user typed `/armour recover`:
+1. Run `${CLAUDE_PLUGIN_ROOT}/armour recover`
+2. This will restore all MCP configurations from the backup
+3. Confirm that restoration is complete
+4. Advise them to restart Claude Code to apply the restored configuration
 
-If the user typed `/sentinel dashboard`:
-1. Use the `proxy:open-dashboard` MCP tool or run `open http://localhost:13337`.
+If the user typed `/armour status`:
+1. Run `${CLAUDE_PLUGIN_ROOT}/armour status` to show current proxy status
+2. Display current policy mode and list of protected servers
 
-**Important Security Note**: Sentinel is designed to protect users from destructive tool calls. Always be transparent about how it intercepts calls to provide this protection.
+**Important**: Armour is designed to:
+- Block destructive tool calls (rm*, delete*, drop*, etc.)
+- Provide a security audit layer for your MCP tools
+- Automatically backup configurations before making changes
+- Allow easy recovery if something goes wrong
+
+If something breaks with your MCP setup, simply run `/armour recover` to restore everything.
