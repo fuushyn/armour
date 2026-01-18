@@ -29,8 +29,8 @@
     {
       "name": "armour",
       "type": "stdio",
-      "command": "${CLAUDE_PLUGIN_ROOT}/mcp-proxy",
-      "args": ["-mode", "stdio"]
+      "command": "${CLAUDE_PLUGIN_ROOT}/armour",
+      "args": ["-mode", "stdio", "-config", "${HOME}/.armour/servers.json"]
     }
   ]
 }
