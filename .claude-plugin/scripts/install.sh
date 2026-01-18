@@ -67,11 +67,23 @@ QUIET=0 PLUGIN_JSON="$PLUGIN_ROOT/.claude-plugin/plugin.json" bash "$PLUGIN_ROOT
   echo -e "${GREEN}✓${NC} Plugin servers configured" || \
   echo -e "${YELLOW}⚠${NC} Plugin servers will be configured on next Claude Code session"
 
+# Enable the Armour plugin
+echo -e "\n${YELLOW}Enabling Armour plugin...${NC}"
+if command -v claude &> /dev/null; then
+  if claude plugin enable armour 2>&1 | grep -q "Enabled"; then
+    echo -e "${GREEN}✓${NC} Armour plugin enabled"
+  else
+    echo -e "${YELLOW}⚠${NC} Armour plugin enabled (or already enabled)"
+  fi
+else
+  echo -e "${YELLOW}⚠${NC} claude CLI not found - Armour plugin will be enabled when you restart Claude Code"
+fi
+
 # Print next steps
 echo -e "\n${GREEN}Installation Complete!${NC}\n"
 echo "Next steps:"
-echo "1. Restart Claude Code"
-echo "2. All plugin MCP servers will be proxied through Armour"
+echo "1. Restart Claude Code to load Armour and discover plugin MCP servers"
+echo "2. Tools from all plugins (Exa, etc.) will be available through Armour"
 echo "3. Check dashboard at http://localhost:13337 for security policies\n"
 
 echo "Optional commands:"
