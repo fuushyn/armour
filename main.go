@@ -131,12 +131,26 @@ func runStdioMode(ctx context.Context, config server.Config) error {
 		// Log to stderr so it doesn't interfere with stdio MCP traffic on stdout
 		fmt.Fprintf(os.Stderr, "Dashboard started on http://%s\n", dashboardAddr)
 	}
-	defer dashboardSrv.Stop()
+	// Keep dashboard running even after stdio exits
+	defer func() {
+		log.Printf("Shutting down dashboard")
+		dashboardSrv.Stop()
+	}()
 
-	// 3. Start Stdio Server
+	// 3. Start Stdio Server in a separate goroutine
 	log.Printf("Stdio server starting (config: %s)", config.ConfigPath)
 
-	return stdioSrv.Run(ctx)
+	// Run stdio server in goroutine so dashboard can keep running indefinitely
+	go func() {
+		if err := stdioSrv.Run(ctx); err != nil {
+			log.Printf("Stdio server error: %v", err)
+		}
+	}()
+
+	// Keep the process running so dashboard stays active
+	// It will only exit when ctx is cancelled (on shutdown signal)
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func handleDetectCommand() {
