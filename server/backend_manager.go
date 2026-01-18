@@ -5,10 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -17,19 +18,13 @@ import (
 
 // autoDiscoverServersFromClaudeConfig reads Claude Code's config and extracts MCP servers
 func (bm *BackendManager) autoDiscoverServersFromClaudeConfig() []proxy.ServerEntry {
-	defer func() {
-		if r := recover(); r != nil {
-			bm.logger.Error("panic during auto-discovery: %v", r)
-		}
-	}()
-
 	homeDir := os.Getenv("HOME")
 	if homeDir == "" {
 		return nil
 	}
 
 	configPath := path.Join(homeDir, ".claude.json")
-	data, err := ioutil.ReadFile(configPath)
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		bm.logger.Debug("failed to read Claude Code config: %v", err)
 		return nil
@@ -124,6 +119,259 @@ func (bm *BackendManager) convertClaudeConfigToServerEntry(name string, config m
 	return entry
 }
 
+// autoDiscoverPluginMCPServers scans Claude Code's plugins directory and discovers MCP servers
+// provided by installed plugins. This enables Approach A: plugins' MCP servers are auto-discovered
+// and can be proxied through Armour.
+// Supports both standard plugins (plugin.json) and marketplace plugins (marketplace.json)
+func (bm *BackendManager) autoDiscoverPluginMCPServers() []proxy.ServerEntry {
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		return nil
+	}
+
+	// Claude Code plugins are typically stored in ~/.claude/plugins
+	pluginsDir := filepath.Join(homeDir, ".claude", "plugins")
+
+	// Check if plugins directory exists
+	if _, err := os.Stat(pluginsDir); err != nil {
+		bm.logger.Debug("plugins directory not found: %v", err)
+		return nil
+	}
+
+	servers := []proxy.ServerEntry{}
+	seenServers := make(map[string]bool)
+
+	// Walk through plugins directory structure
+	// Plugins can be in: ~/.claude/plugins/*/  or ~/.claude/plugins/marketplaces/*/*/
+	err := filepath.Walk(pluginsDir, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue on errors
+		}
+
+		parentDir := filepath.Base(filepath.Dir(path))
+
+		// Look for .claude-plugin/plugin.json files (standard plugins)
+		if info.Name() == "plugin.json" && parentDir == ".claude-plugin" {
+			if pluginServers := bm.parsePluginMCPServers(path, seenServers); pluginServers != nil {
+				servers = append(servers, pluginServers...)
+			}
+		}
+
+		// Look for .claude-plugin/marketplace.json files (marketplace plugins)
+		if info.Name() == "marketplace.json" && parentDir == ".claude-plugin" {
+			if pluginServers := bm.parseMarketplacePluginMCPServers(path, seenServers); pluginServers != nil {
+				servers = append(servers, pluginServers...)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		bm.logger.Debug("error scanning plugins directory: %v", err)
+	}
+
+	if len(servers) > 0 {
+		bm.logger.Info("auto-discovered %d MCP servers from plugins", len(servers))
+	}
+
+	return servers
+}
+
+// parsePluginMCPServers parses a single plugin's plugin.json and extracts mcpServers declarations
+func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServers map[string]bool) []proxy.ServerEntry {
+	data, err := os.ReadFile(pluginJSONPath)
+	if err != nil {
+		bm.logger.Debug("failed to read plugin.json at %s: %v", pluginJSONPath, err)
+		return nil
+	}
+
+	var pluginManifest struct {
+		Name       string                   `json:"name"`
+		MCPServers []map[string]interface{} `json:"mcpServers"`
+	}
+
+	if err := json.Unmarshal(data, &pluginManifest); err != nil {
+		bm.logger.Debug("failed to parse plugin.json at %s: %v", pluginJSONPath, err)
+		return nil
+	}
+
+	if len(pluginManifest.MCPServers) == 0 {
+		return nil // Plugin doesn't provide MCP servers
+	}
+
+	var servers []proxy.ServerEntry
+
+	// Process each MCP server declared in the plugin
+	for _, serverConfig := range pluginManifest.MCPServers {
+		serverName, ok := serverConfig["name"].(string)
+		if !ok {
+			bm.logger.Debug("plugin %s: MCP server missing 'name' field, skipping", pluginManifest.Name)
+			continue
+		}
+
+		// Skip if we've already seen this server (avoid duplicates)
+		if seenServers[serverName] {
+			bm.logger.Debug("plugin %s: skipping duplicate MCP server '%s'", pluginManifest.Name, serverName)
+			continue
+		}
+
+		// Skip Armour's own MCP server to avoid circular references
+		if serverName == "armour" || serverName == "mcp-go-proxy" {
+			bm.logger.Debug("plugin %s: skipping Armour's own MCP server", pluginManifest.Name)
+			continue
+		}
+
+		seenServers[serverName] = true
+
+		// Convert plugin server config to ServerEntry
+		entry := bm.convertPluginMCPServerToEntry(serverName, serverConfig)
+		if entry != nil {
+			bm.logger.Debug("discovered MCP server '%s' from plugin '%s' (%s)",
+				serverName, pluginManifest.Name, entry.Transport)
+			servers = append(servers, *entry)
+		}
+	}
+
+	return servers
+}
+
+// convertPluginMCPServerToEntry converts a plugin's MCP server declaration to a ServerEntry
+func (bm *BackendManager) convertPluginMCPServerToEntry(serverName string, config map[string]interface{}) *proxy.ServerEntry {
+	entry := &proxy.ServerEntry{
+		Name: serverName,
+	}
+
+	// Determine transport type
+	transportType, hasType := config["type"].(string)
+	if !hasType {
+		// Try to infer from config
+		if _, hasURL := config["url"]; hasURL {
+			transportType = "http"
+		} else if _, hasCommand := config["command"]; hasCommand {
+			transportType = "stdio"
+		} else {
+			bm.logger.Debug("cannot determine transport for plugin MCP server '%s'", serverName)
+			return nil
+		}
+	}
+	entry.Transport = transportType
+
+	// Extract transport-specific fields
+	switch transportType {
+	case "http":
+		if url, ok := config["url"].(string); ok {
+			entry.URL = url
+		} else {
+			bm.logger.Debug("HTTP MCP server '%s' missing 'url' field", serverName)
+			return nil
+		}
+
+	case "sse":
+		if url, ok := config["url"].(string); ok {
+			entry.URL = url
+		} else {
+			bm.logger.Debug("SSE MCP server '%s' missing 'url' field", serverName)
+			return nil
+		}
+
+	case "stdio":
+		if cmd, ok := config["command"].(string); ok {
+			entry.Command = cmd
+		} else {
+			bm.logger.Debug("stdio MCP server '%s' missing 'command' field", serverName)
+			return nil
+		}
+
+		// Extract args if present
+		if args, ok := config["args"].([]interface{}); ok {
+			entry.Args = make([]string, 0, len(args))
+			for _, arg := range args {
+				if argStr, ok := arg.(string); ok {
+					entry.Args = append(entry.Args, argStr)
+				}
+			}
+		}
+
+	default:
+		bm.logger.Debug("unsupported transport type '%s' for plugin MCP server '%s'", transportType, serverName)
+		return nil
+	}
+
+	// Extract headers if present
+	if headers, ok := config["headers"].(map[string]interface{}); ok {
+		entry.Headers = make(map[string]string)
+		for k, v := range headers {
+			if headerVal, ok := v.(string); ok {
+				entry.Headers[k] = headerVal
+			}
+		}
+	}
+
+	// Extract environment variables if present
+	if env, ok := config["env"].(map[string]interface{}); ok {
+		entry.Env = make(map[string]string)
+		for k, v := range env {
+			if envVal, ok := v.(string); ok {
+				entry.Env[k] = envVal
+			}
+		}
+	}
+
+	return entry
+}
+
+// discoverAndMergePluginServers discovers MCP servers from plugins and merges them with configured servers.
+// This implements Approach A where plugin MCP servers are auto-discovered and proxied through Armour.
+// Discovered servers don't override explicitly configured servers (configured servers take priority).
+func (bm *BackendManager) discoverAndMergePluginServers() {
+	if bm.registry == nil {
+		bm.logger.Debug("registry is nil, skipping plugin discovery")
+		return
+	}
+
+	// First, discover servers from Claude Code config
+	configServers := bm.autoDiscoverServersFromClaudeConfig()
+
+	// Then, discover servers from installed plugins
+	pluginServers := bm.autoDiscoverPluginMCPServers()
+
+	if len(configServers) == 0 && len(pluginServers) == 0 {
+		bm.logger.Debug("no servers discovered from config or plugins")
+		return
+	}
+
+	// Track which server names we already have (to avoid duplicates)
+	existingNames := make(map[string]bool)
+	for _, srv := range bm.registry.Servers {
+		existingNames[srv.Name] = true
+	}
+
+	// Add discovered config servers that aren't already in registry
+	for _, srv := range configServers {
+		if !existingNames[srv.Name] {
+			bm.registry.Servers = append(bm.registry.Servers, srv)
+			existingNames[srv.Name] = true
+			bm.logger.Debug("added discovered server from config: %s (%s)", srv.Name, srv.Transport)
+		}
+	}
+
+	// Add plugin servers that aren't already in registry
+	for _, srv := range pluginServers {
+		if !existingNames[srv.Name] {
+			bm.registry.Servers = append(bm.registry.Servers, srv)
+			existingNames[srv.Name] = true
+			bm.logger.Debug("added discovered server from plugin: %s (%s)", srv.Name, srv.Transport)
+		}
+	}
+
+	totalDiscovered := len(configServers) + len(pluginServers)
+	if totalDiscovered > 0 {
+		bm.logger.Info("discovered %d total servers (%d from config, %d from plugins)",
+			totalDiscovered, len(configServers), len(pluginServers))
+	}
+}
+
 // BackendConnection represents a connection to a single backend MCP server.
 type BackendConnection struct {
 	config       *proxy.ServerEntry
@@ -165,7 +413,8 @@ func NewBackendManager(registry *proxy.ServerRegistry, logger *proxy.Logger, too
 }
 
 // Initialize attempts to initialize all configured backend servers.
-// If no servers are configured, auto-discovers from Claude Code's config.
+// First, it discovers MCP servers from installed Claude Code plugins (Approach A support).
+// Then, it initializes all servers (configured + discovered).
 // Partial failures are logged but don't prevent initialization of other backends.
 func (bm *BackendManager) Initialize(ctx context.Context) error {
 	defer bm.initializationOnce.Do(func() {
@@ -174,6 +423,9 @@ func (bm *BackendManager) Initialize(ctx context.Context) error {
 
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
+
+	// First, discover and merge plugin MCP servers with configured servers
+	bm.discoverAndMergePluginServers()
 
 	if bm.registry == nil || len(bm.registry.Servers) == 0 {
 		bm.logger.Debug("no backend servers configured in registry, operating with empty backend list")

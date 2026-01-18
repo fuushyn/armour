@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type Forwarder struct {
@@ -14,7 +15,9 @@ type Forwarder struct {
 
 func NewForwarder() *Forwarder {
 	return &Forwarder{
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 

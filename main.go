@@ -264,13 +264,15 @@ func handleStatusCommand() {
 	if err == nil {
 		defer statsResp.Body.Close()
 		var stats map[string]interface{}
-		json.NewDecoder(statsResp.Body).Decode(&stats)
-
-		fmt.Println("🟢 Sentinel Proxy is Active")
-		fmt.Println("   Status: Running")
-		fmt.Printf("   Uptime: %.0fs\n", stats["uptime_seconds"])
-		fmt.Printf("   Blocked Calls: %.0f\n", stats["blocked_calls_total"])
-		fmt.Println("\n   Dashboard: http://localhost:13337")
+		if err := json.NewDecoder(statsResp.Body).Decode(&stats); err == nil {
+			fmt.Println("🟢 Sentinel Proxy is Active")
+			fmt.Println("   Status: Running")
+			fmt.Printf("   Uptime: %.0fs\n", stats["uptime_seconds"])
+			fmt.Printf("   Blocked Calls: %.0f\n", stats["blocked_calls_total"])
+			fmt.Println("\n   Dashboard: http://localhost:13337")
+		} else {
+			fmt.Println("🟢 Sentinel Proxy is Active")
+		}
 	} else {
 		fmt.Println("🟢 Sentinel Proxy is Active")
 	}

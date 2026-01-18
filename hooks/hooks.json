@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup-mcp-gateway.sh",
+            "description": "Auto-discover plugin MCP servers and configure Armour as the unified MCP gateway with managed-mcp.json allowlist"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -15,5 +15,15 @@
     "./commands/recover.md",
     "./commands/status.md"
   ],
-  "hooks": ["./hooks/hooks.json"]
+  "hooks": [
+    "./hooks/hooks.json"
+  ],
+  "mcpServers": [
+    {
+      "name": "armour",
+      "type": "stdio",
+      "command": "/Users/devel12/dev/armour/mcp-go-proxy",
+      "args": ["-mode", "stdio"]
+    }
+  ]
 }

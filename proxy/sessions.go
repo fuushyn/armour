@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+const (
+	// Session ID byte length for cryptographic randomness
+	sessionIDByteLength = 24
+)
+
 type SessionManager struct {
 	db               *sql.DB
 	mu               sync.RWMutex
@@ -149,7 +154,7 @@ func (sm *SessionManager) GetSession(sessionID string) (SessionRecord, error) {
 }
 
 func generateCryptoSessionID() (string, error) {
-	b := make([]byte, 24)
+	b := make([]byte, sessionIDByteLength)
 	_, err := rand.Read(b)
 	if err != nil {
 		return "", err

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -252,14 +253,10 @@ func (st *StatsTracker) topTools(tools map[string]int64, limit int) []ToolStat {
 		toolStats = append(toolStats, ToolStat{Name: name, Count: count})
 	}
 
-	// Simple bubble sort (good enough for small lists)
-	for i := 0; i < len(toolStats); i++ {
-		for j := i + 1; j < len(toolStats); j++ {
-			if toolStats[j].Count > toolStats[i].Count {
-				toolStats[i], toolStats[j] = toolStats[j], toolStats[i]
-			}
-		}
-	}
+	// Sort by count descending
+	sort.Slice(toolStats, func(i, j int) bool {
+		return toolStats[i].Count > toolStats[j].Count
+	})
 
 	if len(toolStats) > limit {
 		return toolStats[:limit]

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -9,6 +10,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+)
+
+const (
+	// SSE event queue buffer size
+	sseEventQueueBuffer = 100
+	// HTTP client timeout for SSE connections
+	sseHTTPClientTimeout = 30 * time.Second
 )
 
 type Transport interface {
@@ -34,9 +43,16 @@ type SSETransport struct {
 	headers      map[string]string // For custom headers (e.g., API keys)
 	lastResponse []byte            // For storing POST response
 	responseReady bool              // Whether lastResponse is ready to read
+	ctx          context.Context   // Context for cancellation and timeouts
+	cancel       context.CancelFunc // Cancel function for cleanup
+	wg           sync.WaitGroup     // Track readLoop goroutine
 }
 
 func NewSSETransport(url string) *SSETransport {
+	return NewSSETransportWithContext(context.Background(), url)
+}
+
+func NewSSETransportWithContext(ctx context.Context, url string) *SSETransport {
 	// Normalize URL: add http:// if scheme is missing
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		url = "http://" + url
@@ -45,13 +61,20 @@ func NewSSETransport(url string) *SSETransport {
 	// Generate a session ID for the SSE connection
 	sessionID := fmt.Sprintf("%x", rand.Uint64())
 
+	// Create a context with timeout for the transport
+	transportCtx, cancel := context.WithTimeout(ctx, sseHTTPClientTimeout)
+
 	return &SSETransport{
-		client:      &http.Client{},
+		client: &http.Client{
+			Timeout: sseHTTPClientTimeout,
+		},
 		url:         url,
 		sessionID:   sessionID,
-		eventQueue:  make(chan string, 100),
+		eventQueue:  make(chan string, sseEventQueueBuffer),
 		receivedIDs: make(map[int]bool),
 		headers:     make(map[string]string),
+		ctx:         transportCtx,
+		cancel:      cancel,
 	}
 }
 
@@ -65,7 +88,7 @@ func (s *SSETransport) Connect() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	req, err := http.NewRequest("GET", s.url, nil)
+	req, err := http.NewRequestWithContext(s.ctx, "GET", s.url, nil)
 	if err != nil {
 		return err
 	}
@@ -92,13 +115,25 @@ func (s *SSETransport) Connect() error {
 	s.httpResp = resp
 	s.scanner = bufio.NewScanner(resp.Body)
 
+	s.wg.Add(1)
 	go s.readLoop()
 
 	return nil
 }
 
 func (s *SSETransport) readLoop() {
-	for s.scanner.Scan() {
+	defer s.wg.Done()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
+
+		if !s.scanner.Scan() {
+			return
+		}
+
 		line := s.scanner.Text()
 
 		if line == "" {
@@ -129,8 +164,8 @@ func (s *SSETransport) readLoop() {
 			data := strings.TrimPrefix(line, "data: ")
 			select {
 			case s.eventQueue <- data:
-			default:
-				s.eventQueue <- data
+			case <-s.ctx.Done():
+				return
 			}
 		}
 
@@ -229,9 +264,8 @@ func (s *SSETransport) ReceiveMessage() ([]byte, error) {
 
 func (s *SSETransport) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.closed {
+		s.mu.Unlock()
 		return nil
 	}
 
@@ -241,6 +275,14 @@ func (s *SSETransport) Close() error {
 	if s.httpResp != nil {
 		s.httpResp.Body.Close()
 	}
+
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.mu.Unlock()
+
+	// Wait for readLoop goroutine to exit
+	s.wg.Wait()
 
 	return nil
 }
@@ -329,8 +371,10 @@ func NewHTTPTransport(url string) *HTTPTransport {
 	return &HTTPTransport{
 		url:       url,
 		sessionID: "", // Will be set from server's initialize response header
-		client:    &http.Client{},
-		headers:   make(map[string]string),
+		client: &http.Client{
+			Timeout: sseHTTPClientTimeout,
+		},
+		headers: make(map[string]string),
 	}
 }
 
