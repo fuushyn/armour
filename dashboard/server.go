@@ -771,8 +771,10 @@ func getSettingsHTML() string {
 func getBlocklistHTML() string {
 	return `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Blocklist Management - MCP Proxy</title>
 	<style>
 		* {
@@ -781,10 +783,16 @@ func getBlocklistHTML() string {
 			box-sizing: border-box;
 		}
 
+		html {
+			scroll-behavior: smooth;
+		}
+
 		body {
 			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 			background: #f5f5f5;
 			padding: 20px;
+			line-height: 1.6;
+			color: #333;
 		}
 
 		.container {
@@ -797,34 +805,87 @@ func getBlocklistHTML() string {
 			padding: 30px;
 			border-radius: 10px;
 			margin-bottom: 30px;
-			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+			box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 		}
 
 		h1 {
-			color: #333;
-			margin-bottom: 10px;
+			color: #2c3e50;
+			margin-bottom: 8px;
+			font-size: 28px;
+		}
+
+		.subtitle {
+			color: #7f8c8d;
+			margin-bottom: 20px;
+			font-size: 14px;
 		}
 
 		.btn {
-			background: #667eea;
+			background: #5568d3;
 			color: white;
-			padding: 10px 20px;
+			padding: 12px 24px;
 			border: none;
 			border-radius: 6px;
 			cursor: pointer;
 			font-size: 14px;
+			font-weight: 500;
+			transition: background-color 0.2s ease, outline-offset 0.2s ease;
+			min-height: 44px;
+			min-width: 44px;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
 		}
 
 		.btn:hover {
-			background: #764ba2;
+			background: #4557c0;
+		}
+
+		.btn:focus {
+			outline: 3px solid #5568d3;
+			outline-offset: 2px;
+		}
+
+		.btn:active {
+			background: #3d47a8;
+		}
+
+		.btn:disabled {
+			background: #bdc3c7;
+			cursor: not-allowed;
+			opacity: 0.6;
 		}
 
 		.btn-danger {
-			background: #dc3545;
+			background: #e74c3c;
 		}
 
 		.btn-danger:hover {
-			background: #c82333;
+			background: #c0392b;
+		}
+
+		.btn-danger:focus {
+			outline: 3px solid #e74c3c;
+			outline-offset: 2px;
+		}
+
+		.btn-secondary {
+			background: #95a5a6;
+		}
+
+		.btn-secondary:hover {
+			background: #7f8c8d;
+		}
+
+		.btn-secondary:focus {
+			outline: 3px solid #95a5a6;
+			outline-offset: 2px;
+		}
+
+		.button-group {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
 		}
 
 		table {
@@ -833,51 +894,78 @@ func getBlocklistHTML() string {
 			background: white;
 			border-radius: 10px;
 			overflow: hidden;
-			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+			box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+			margin-bottom: 20px;
 		}
 
 		th, td {
-			padding: 12px 15px;
+			padding: 14px 15px;
 			text-align: left;
-			border-bottom: 1px solid #eee;
+			border-bottom: 1px solid #ecf0f1;
 		}
 
 		th {
-			background: #667eea;
+			background: #34495e;
 			color: white;
 			font-weight: 600;
+			font-size: 13px;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
 		}
 
 		tr:hover {
-			background: #f9f9f9;
+			background: #f9fafb;
+		}
+
+		td code {
+			background: #ecf0f1;
+			padding: 2px 6px;
+			border-radius: 3px;
+			font-family: 'Courier New', monospace;
+			font-size: 13px;
 		}
 
 		.badge {
 			display: inline-block;
-			padding: 4px 8px;
+			padding: 6px 10px;
 			border-radius: 4px;
 			font-size: 12px;
 			font-weight: 600;
+			white-space: nowrap;
 		}
 
 		.badge-block {
-			background: #ffe0e0;
-			color: #c82333;
+			background: #fadbd8;
+			color: #78281f;
+			border: 1px solid #f5b7b1;
 		}
 
 		.badge-allow {
-			background: #e0ffe0;
-			color: #155724;
+			background: #d5f4e6;
+			color: #0b5345;
+			border: 1px solid #a9dfbf;
 		}
 
 		.badge-regex {
-			background: #e0e8ff;
-			color: #004085;
+			background: #d6eaf8;
+			color: #1a3a52;
+			border: 1px solid #aed6f1;
 		}
 
 		.badge-semantic {
-			background: #ffe0f5;
-			color: #6f0047;
+			background: #f4ecf7;
+			color: #4a235a;
+			border: 1px solid #d7bde2;
+		}
+
+		.badge-enabled {
+			background: #d5f4e6;
+			color: #0b5345;
+		}
+
+		.badge-disabled {
+			background: #fadbd8;
+			color: #78281f;
 		}
 
 		.modal {
@@ -887,14 +975,25 @@ func getBlocklistHTML() string {
 			left: 0;
 			width: 100%;
 			height: 100%;
-			background: rgba(0,0,0,0.5);
+			background: rgba(0, 0, 0, 0.5);
 			z-index: 1000;
+			align-items: center;
+			justify-content: center;
+			padding: 20px;
 		}
 
 		.modal.active {
 			display: flex;
-			align-items: center;
-			justify-content: center;
+		}
+
+		.modal-overlay {
+			position: fixed;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background: rgba(0, 0, 0, 0.5);
+			z-index: 999;
 		}
 
 		.modal-content {
@@ -902,144 +1001,358 @@ func getBlocklistHTML() string {
 			padding: 30px;
 			border-radius: 10px;
 			max-width: 500px;
-			width: 90%;
-			max-height: 80vh;
+			width: 100%;
+			max-height: 90vh;
 			overflow-y: auto;
+			position: relative;
+			z-index: 1001;
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+		}
+
+		.modal-header {
+			margin-bottom: 24px;
+			padding-bottom: 16px;
+			border-bottom: 1px solid #ecf0f1;
+		}
+
+		.modal-header h2 {
+			color: #2c3e50;
+			font-size: 20px;
+			margin: 0;
+		}
+
+		.modal-footer {
+			display: flex;
+			gap: 12px;
+			margin-top: 24px;
+			justify-content: flex-end;
 		}
 
 		.form-group {
-			margin-bottom: 15px;
+			margin-bottom: 18px;
 		}
 
 		label {
 			display: block;
-			margin-bottom: 5px;
-			color: #333;
+			margin-bottom: 6px;
+			color: #2c3e50;
 			font-weight: 500;
+			font-size: 14px;
 		}
 
-		input, textarea, select {
+		input[type="text"],
+		input[type="email"],
+		input[type="password"],
+		textarea,
+		select {
 			width: 100%;
-			padding: 8px 12px;
-			border: 1px solid #ddd;
+			padding: 10px 12px;
+			border: 1px solid #bdc3c7;
 			border-radius: 6px;
 			font-family: inherit;
 			font-size: 14px;
+			transition: border-color 0.2s ease, box-shadow 0.2s ease;
+		}
+
+		input[type="text"]:focus,
+		input[type="email"]:focus,
+		input[type="password"]:focus,
+		textarea:focus,
+		select:focus {
+			border-color: #5568d3;
+			box-shadow: 0 0 0 3px rgba(85, 104, 211, 0.1);
+			outline: none;
+		}
+
+		input[type="text"]:disabled,
+		input[type="email"]:disabled,
+		input[type="password"]:disabled,
+		textarea:disabled,
+		select:disabled {
+			background-color: #ecf0f1;
+			cursor: not-allowed;
+			opacity: 0.6;
 		}
 
 		textarea {
 			resize: vertical;
-			min-height: 60px;
+			min-height: 80px;
 		}
 
 		.checkbox-group {
 			display: flex;
 			align-items: center;
 			gap: 10px;
+			margin-bottom: 12px;
+		}
+
+		.checkbox-label {
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+			cursor: pointer;
+			user-select: none;
+		}
+
+		input[type="checkbox"] {
+			width: 18px;
+			height: 18px;
+			cursor: pointer;
+			accent-color: #5568d3;
+		}
+
+		input[type="checkbox"]:focus {
+			outline: 2px solid #5568d3;
+			outline-offset: 2px;
+		}
+
+		.permissions-grid {
+			background: #f9fafb;
+			padding: 12px;
+			border-radius: 6px;
+			border: 1px solid #ecf0f1;
 		}
 
 		.nav {
-			margin-top: 20px;
+			margin-top: 30px;
 			padding-top: 20px;
-			border-top: 1px solid #eee;
+			border-top: 1px solid #ecf0f1;
+			display: flex;
+			gap: 20px;
+			flex-wrap: wrap;
 		}
 
 		.nav a {
-			color: #667eea;
+			color: #5568d3;
 			text-decoration: none;
-			margin-right: 15px;
+			font-weight: 500;
+			transition: color 0.2s ease, outline-offset 0.2s ease;
+			padding: 4px 2px;
 		}
 
 		.nav a:hover {
+			color: #4557c0;
 			text-decoration: underline;
+		}
+
+		.nav a:focus {
+			outline: 2px solid #5568d3;
+			outline-offset: 4px;
+		}
+
+		.alert {
+			padding: 12px 16px;
+			border-radius: 6px;
+			margin-bottom: 16px;
+			font-size: 14px;
+			border-left: 4px solid;
+		}
+
+		.alert-error {
+			background: #fadbd8;
+			color: #78281f;
+			border-left-color: #e74c3c;
+		}
+
+		.alert-success {
+			background: #d5f4e6;
+			color: #0b5345;
+			border-left-color: #27ae60;
+		}
+
+		.skip-link {
+			position: absolute;
+			top: -40px;
+			left: 0;
+			background: #5568d3;
+			color: white;
+			padding: 8px 16px;
+			text-decoration: none;
+			border-radius: 0 0 6px 0;
+			z-index: 9999;
+		}
+
+		.skip-link:focus {
+			top: 0;
+		}
+
+		@media (max-width: 768px) {
+			header {
+				padding: 20px;
+			}
+
+			h1 {
+				font-size: 22px;
+			}
+
+			.btn {
+				padding: 10px 16px;
+				font-size: 13px;
+			}
+
+			table {
+				font-size: 13px;
+			}
+
+			th, td {
+				padding: 10px 12px;
+			}
+
+			.modal-content {
+				max-width: 95vw;
+				padding: 20px;
+			}
+
+			.modal-footer {
+				flex-direction: column;
+			}
+
+			.button-group {
+				flex-direction: column;
+			}
+
+			.button-group .btn {
+				width: 100%;
+			}
+
+			.nav {
+				flex-direction: column;
+				gap: 10px;
+			}
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			* {
+				animation-duration: 0.01ms !important;
+				animation-iteration-count: 1 !important;
+				transition-duration: 0.01ms !important;
+			}
 		}
 	</style>
 </head>
 <body>
+	<a href="#main-content" class="skip-link">Skip to main content</a>
+
 	<div class="container">
 		<header>
 			<h1>🔒 Blocklist Management</h1>
-			<p style="color: #666;">Manage tool blocklisting rules</p>
-			<button class="btn" onclick="openModal()">+ New Rule</button>
+			<p class="subtitle">Manage tool blocklisting rules and permissions</p>
+			<button class="btn" onclick="openModal()" aria-label="Create new blocklist rule">
+				+ New Rule
+			</button>
 		</header>
 
-		<table>
-			<thead>
-				<tr>
-					<th>Pattern</th>
-					<th>Description</th>
-					<th>Action</th>
-					<th>Type</th>
-					<th>Tools</th>
-					<th>Status</th>
-					<th>Actions</th>
-				</tr>
-			</thead>
-			<tbody id="rules-table">
-				<tr><td colspan="7" style="text-align: center; color: #999;">Loading rules...</td></tr>
-			</tbody>
-		</table>
+		<div id="notification" role="status" aria-live="polite" aria-atomic="true"></div>
 
-		<div class="nav">
-			<a href="/">← Back to Dashboard</a>
-			<a href="/audit">📊 Audit Log</a>
-			<a href="/settings">⚙️ Settings</a>
-		</div>
+		<main id="main-content">
+			<table role="table" aria-label="Blocklist rules">
+				<thead>
+					<tr>
+						<th scope="col">Pattern</th>
+						<th scope="col">Description</th>
+						<th scope="col">Action</th>
+						<th scope="col">Type</th>
+						<th scope="col">Tools</th>
+						<th scope="col">Status</th>
+						<th scope="col">Actions</th>
+					</tr>
+				</thead>
+				<tbody id="rules-table">
+					<tr><td colspan="7" style="text-align: center; color: #999; padding: 30px;">Loading rules...</td></tr>
+				</tbody>
+			</table>
+		</main>
+
+		<nav class="nav" aria-label="Secondary navigation">
+			<a href="/" title="Return to main dashboard">← Back to Dashboard</a>
+			<a href="/audit" title="View system audit log">📊 Audit Log</a>
+			<a href="/settings" title="Manage system settings">⚙️ Settings</a>
+		</nav>
 	</div>
 
 	<!-- Modal for create/edit -->
-	<div class="modal" id="modal">
+	<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+		<div class="modal-overlay" onclick="closeModal()"></div>
 		<div class="modal-content">
-			<h2>Add New Rule</h2>
+			<div class="modal-header">
+				<h2 id="modal-title">Add New Rule</h2>
+			</div>
 			<form onsubmit="saveRule(event)">
 				<div class="form-group">
 					<label for="pattern">Pattern/Topic:</label>
-					<input type="text" id="pattern" required>
+					<input type="text" id="pattern" aria-required="true" required>
 				</div>
 
 				<div class="form-group">
 					<label for="description">Description:</label>
-					<textarea id="description"></textarea>
+					<textarea id="description" aria-describedby="description-help"></textarea>
+					<small id="description-help" style="color: #7f8c8d; display: block; margin-top: 4px;">
+						Briefly explain what this rule blocks or allows
+					</small>
 				</div>
 
 				<div class="form-group">
 					<label for="action">Action:</label>
-					<select id="action" onchange="updatePermissions()">
+					<select id="action" aria-required="true" onchange="updatePermissions()" required>
+						<option value="">-- Select action --</option>
 						<option value="block">Block</option>
 						<option value="allow">Allow</option>
 					</select>
 				</div>
 
-				<div class="form-group">
-					<label>Match Type:</label>
-					<div>
-						<label class="checkbox-group">
-							<input type="checkbox" id="is_regex"> Regex
-						</label>
-						<label class="checkbox-group">
-							<input type="checkbox" id="is_semantic" checked> Semantic
-						</label>
+				<fieldset class="form-group">
+					<legend style="font-weight: 500; color: #2c3e50; margin-bottom: 12px;">Match Type:</legend>
+					<div class="checkbox-group">
+						<input type="checkbox" id="is_regex">
+						<label for="is_regex" class="checkbox-label">Regex pattern matching (fast)</label>
 					</div>
-				</div>
+					<div class="checkbox-group">
+						<input type="checkbox" id="is_semantic" checked>
+						<label for="is_semantic" class="checkbox-label">Semantic matching via Claude API (flexible)</label>
+					</div>
+				</fieldset>
 
 				<div class="form-group">
-					<label for="tools">Tools (comma-separated, leave empty for all):</label>
-					<input type="text" id="tools" placeholder="tool1, tool2">
+					<label for="tools">Tools (comma-separated):</label>
+					<input type="text" id="tools" placeholder="e.g., tool1, tool2" aria-describedby="tools-help">
+					<small id="tools-help" style="color: #7f8c8d; display: block; margin-top: 4px;">
+						Leave empty to apply rule to all tools
+					</small>
 				</div>
 
 				<div class="form-group">
 					<label>Permissions:</label>
-					<div id="permissions-grid"></div>
+					<div class="permissions-grid" id="permissions-grid">
+						(Permissions configured automatically)
+					</div>
 				</div>
 
-				<button type="submit" class="btn">Save Rule</button>
-				<button type="button" class="btn" onclick="closeModal()" style="background: #6c757d;">Cancel</button>
+				<div class="modal-footer">
+					<button type="submit" class="btn" aria-label="Save blocklist rule">
+						Save Rule
+					</button>
+					<button type="button" class="btn btn-secondary" onclick="closeModal()" aria-label="Cancel and close dialog">
+						Cancel
+					</button>
+				</div>
 			</form>
 		</div>
 	</div>
 
 	<script>
 		let editingRuleId = null;
+
+		// Notification system
+		function showNotification(message, type = 'success') {
+			const notif = document.getElementById('notification');
+			notif.innerHTML = ` + "`" + `<div class="alert alert-${type}" role="alert">${message}</div>` + "`" + `;
+			notif.focus();
+
+			// Auto-hide after 5 seconds
+			setTimeout(() => {
+				notif.innerHTML = '';
+			}, 5000);
+		}
 
 		function loadRules() {
 			fetch('/api/blocklist')
@@ -1049,7 +1362,7 @@ func getBlocklistHTML() string {
 					tbody.innerHTML = '';
 
 					if (!data.rules || data.rules.length === 0) {
-						tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999;">No rules configured</td></tr>';
+						tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999; padding: 30px;">No rules configured</td></tr>';
 						return;
 					}
 
@@ -1059,16 +1372,25 @@ func getBlocklistHTML() string {
 						if (rule.is_regex) typeBadges.push('<span class="badge badge-regex">Regex</span>');
 						if (rule.is_semantic) typeBadges.push('<span class="badge badge-semantic">Semantic</span>');
 
+						const statusBadgeClass = rule.enabled ? 'badge-enabled' : 'badge-disabled';
+						const statusText = rule.enabled ? 'Enabled' : 'Disabled';
+
 						row.innerHTML = ` + "`" + `
-							<td><code>${rule.pattern}</code></td>
-							<td>${rule.description || '-'}</td>
+							<td><code>${escapeHtml(rule.pattern)}</code></td>
+							<td>${escapeHtml(rule.description || '-')}</td>
 							<td><span class="badge ${rule.action === 'block' ? 'badge-block' : 'badge-allow'}">${rule.action}</span></td>
 							<td>${typeBadges.join(' ')}</td>
-							<td>${rule.tools || 'All'}</td>
-							<td>${rule.enabled ? '✓ Enabled' : '✗ Disabled'}</td>
+							<td>${escapeHtml(rule.tools || 'All')}</td>
+							<td><span class="badge ${statusBadgeClass}">${statusText}</span></td>
 							<td>
-								<button class="btn" onclick="editRule(${rule.id})">Edit</button>
-								<button class="btn btn-danger" onclick="deleteRule(${rule.id})">Delete</button>
+								<div class="button-group">
+									<button class="btn" onclick="editRule(${rule.id})" aria-label="Edit rule: ${escapeHtml(rule.pattern)}">
+										Edit
+									</button>
+									<button class="btn btn-danger" onclick="deleteRule(${rule.id})" aria-label="Delete rule: ${escapeHtml(rule.pattern)}">
+										Delete
+									</button>
+								</div>
 							</td>
 						` + "`" + `;
 						tbody.appendChild(row);
@@ -1076,25 +1398,39 @@ func getBlocklistHTML() string {
 				})
 				.catch(err => {
 					console.error('Failed to load rules:', err);
-					document.getElementById('rules-table').innerHTML = '<tr><td colspan="7" style="text-align: center; color: red;">Error loading rules</td></tr>';
+					showNotification('Error loading rules: ' + err.message, 'error');
 				});
 		}
 
 		function openModal() {
 			editingRuleId = null;
+			document.getElementById('modal').classList.add('active');
 			document.getElementById('pattern').value = '';
 			document.getElementById('description').value = '';
-			document.getElementById('action').value = 'block';
+			document.getElementById('action').value = '';
 			document.getElementById('is_regex').checked = false;
 			document.getElementById('is_semantic').checked = true;
 			document.getElementById('tools').value = '';
 			updatePermissions();
-			document.getElementById('modal').classList.add('active');
+
+			// Focus trap: move focus to first input
+			setTimeout(() => {
+				document.getElementById('pattern').focus();
+			}, 100);
 		}
 
 		function closeModal() {
 			document.getElementById('modal').classList.remove('active');
+			// Return focus to trigger button
+			document.querySelector('[onclick="openModal()"]').focus();
 		}
+
+		// Close modal on Escape key
+		document.addEventListener('keydown', (e) => {
+			if (e.key === 'Escape' && document.getElementById('modal').classList.contains('active')) {
+				closeModal();
+			}
+		});
 
 		function editRule(ruleId) {
 			fetch('/api/blocklist?id=' + ruleId)
@@ -1107,21 +1443,32 @@ func getBlocklistHTML() string {
 					document.getElementById('is_regex').checked = rule.is_regex;
 					document.getElementById('is_semantic').checked = rule.is_semantic;
 					document.getElementById('tools').value = rule.tools || '';
+					document.getElementById('modal-title').textContent = 'Edit Rule';
 					updatePermissions();
 					document.getElementById('modal').classList.add('active');
+					document.getElementById('pattern').focus();
+				})
+				.catch(err => {
+					showNotification('Error loading rule: ' + err.message, 'error');
 				});
 		}
 
 		function saveRule(event) {
 			event.preventDefault();
 
+			const pattern = document.getElementById('pattern').value.trim();
+			if (!pattern) {
+				showNotification('Pattern/Topic is required', 'error');
+				return;
+			}
+
 			const rule = {
-				pattern: document.getElementById('pattern').value,
-				description: document.getElementById('description').value,
+				pattern: pattern,
+				description: document.getElementById('description').value.trim(),
 				action: document.getElementById('action').value,
 				is_regex: document.getElementById('is_regex').checked,
 				is_semantic: document.getElementById('is_semantic').checked,
-				tools: document.getElementById('tools').value
+				tools: document.getElementById('tools').value.trim()
 			};
 
 			const url = editingRuleId ? '/api/blocklist?id=' + editingRuleId : '/api/blocklist';
@@ -1136,30 +1483,43 @@ func getBlocklistHTML() string {
 			.then(data => {
 				closeModal();
 				loadRules();
-				alert('Rule saved successfully');
+				showNotification('Rule ' + (editingRuleId ? 'updated' : 'created') + ' successfully', 'success');
 			})
-			.catch(err => alert('Error saving rule: ' + err));
+			.catch(err => {
+				showNotification('Error saving rule: ' + err.message, 'error');
+			});
 		}
 
 		function deleteRule(ruleId) {
-			if (confirm('Delete this rule?')) {
+			if (confirm('Are you sure you want to delete this rule? This action cannot be undone.')) {
 				fetch('/api/blocklist?id=' + ruleId, { method: 'DELETE' })
 					.then(r => r.json())
 					.then(data => {
 						loadRules();
-						alert('Rule deleted successfully');
+						showNotification('Rule deleted successfully', 'success');
 					})
-					.catch(err => alert('Error deleting rule: ' + err));
+					.catch(err => {
+						showNotification('Error deleting rule: ' + err.message, 'error');
+					});
 			}
 		}
 
 		function updatePermissions() {
 			// Placeholder for permissions UI
-			document.getElementById('permissions-grid').innerHTML = '(Permissions configured automatically)';
+			document.getElementById('permissions-grid').innerHTML = '<em style="color: #7f8c8d;">Permissions are configured automatically based on action</em>';
+		}
+
+		function escapeHtml(text) {
+			const div = document.createElement('div');
+			div.textContent = text;
+			return div.innerHTML;
 		}
 
 		// Load rules on page load
 		loadRules();
+
+		// Refresh rules every 30 seconds
+		setInterval(loadRules, 30000);
 	</script>
 </body>
 </html>
