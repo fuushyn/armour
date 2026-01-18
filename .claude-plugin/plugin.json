@@ -30,15 +30,7 @@
       "name": "armour",
       "type": "stdio",
       "command": "${CLAUDE_PLUGIN_ROOT}/mcp-proxy",
-      "args": [
-        "-mode",
-        "stdio"
-      ]
-    },
-    {
-      "name": "exa",
-      "type": "http",
-      "url": "https://mcp.exa.ai/mcp"
+      "args": ["-mode", "stdio"]
     }
   ]
 }

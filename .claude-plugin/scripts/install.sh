@@ -61,9 +61,9 @@ fi
 mkdir -p "$CONFIG_DIR"
 echo -e "${GREEN}✓${NC} Database directory ready"
 
-# Discover and add all installed plugin MCP servers to Armour's plugin.json
+# Discover and add all installed plugin MCP servers to ~/.armour/servers.json
 echo -e "\n${YELLOW}Discovering plugin MCP servers...${NC}"
-QUIET=0 PLUGIN_JSON="$PLUGIN_ROOT/.claude-plugin/plugin.json" bash "$PLUGIN_ROOT/../scripts/update-plugin-servers.sh" && \
+QUIET=0 bash "$PLUGIN_ROOT/../scripts/discover-plugin-servers.sh" && \
   echo -e "${GREEN}✓${NC} Plugin servers configured" || \
   echo -e "${YELLOW}⚠${NC} Plugin servers will be configured on next Claude Code session"
 

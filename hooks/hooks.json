@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "QUIET=1 PLUGIN_JSON=\"${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json\" bash ${CLAUDE_PLUGIN_ROOT}/scripts/update-plugin-servers.sh",
-            "description": "Update Armour's plugin.json with any newly installed plugins"
+            "command": "QUIET=1 bash ${CLAUDE_PLUGIN_ROOT}/scripts/discover-plugin-servers.sh",
+            "description": "Discover and add any newly installed plugin MCP servers to ~/.armour/servers.json"
           }
         ]
       }
