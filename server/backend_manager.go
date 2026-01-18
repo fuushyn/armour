@@ -321,6 +321,16 @@ func (bm *BackendManager) convertPluginMCPServerToEntry(serverName string, confi
 	return entry
 }
 
+// parseMarketplacePluginMCPServers parses marketplace.json files for MCP servers.
+// Marketplace files are similar to plugin.json files but used for marketplace plugins.
+func (bm *BackendManager) parseMarketplacePluginMCPServers(marketplaceJSONPath string, seenServers map[string]bool) []proxy.ServerEntry {
+	// For now, this is a stub implementation. Marketplace.json files should be processed
+	// similarly to plugin.json files. This will be implemented in a future update.
+	// Return nil to avoid breaking existing functionality.
+	bm.logger.Debug("marketplace plugin discovery not yet implemented for: %s", marketplaceJSONPath)
+	return nil
+}
+
 // discoverAndMergePluginServers discovers MCP servers from plugins and merges them with configured servers.
 // This implements Approach A where plugin MCP servers are auto-discovered and proxied through Armour.
 // Discovered servers don't override explicitly configured servers (configured servers take priority).

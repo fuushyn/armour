@@ -107,6 +107,24 @@ func (s *StdioServer) SetBlocklist(blocklist *BlocklistMiddleware) {
 	s.blocklist = blocklist
 }
 
+// GetBlocklist returns the blocklist middleware
+func (s *StdioServer) GetBlocklist() *BlocklistMiddleware {
+	return s.blocklist
+}
+
+// GetDB returns the database connection
+func (s *StdioServer) GetDB() *sql.DB {
+	return s.db
+}
+
+// Close closes the server resources including the database
+func (s *StdioServer) Close() error {
+	if s.db != nil {
+		return s.db.Close()
+	}
+	return nil
+}
+
 // Run starts the stdio server, reading JSON-RPC requests from stdin and writing
 // responses to stdout until EOF or error.
 func (s *StdioServer) Run(ctx context.Context) error {
