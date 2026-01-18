@@ -134,16 +134,3 @@ func (p *Proxy) GetSessionID() string {
 	defer p.mu.RUnlock()
 	return p.sessionID
 }
-
-// ToBoolean converts an interface{} to bool, handling both bool and object types
-func ToBoolean(v interface{}) bool {
-	switch val := v.(type) {
-	case bool:
-		return val
-	case map[string]interface{}:
-		// If it's an object, treat it as truthy
-		return len(val) > 0
-	default:
-		return false
-	}
-}

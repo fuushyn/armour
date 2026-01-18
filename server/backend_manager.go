@@ -575,3 +575,342 @@ func generateSessionID() string {
 	}
 	return sessionID
 }
+
+// ListResources calls resources/list on a backend and returns the list of resources
+func (bm *BackendManager) ListResources(ctx context.Context, backendID string) ([]interface{}, error) {
+	bm.mu.RLock()
+	conn, exists := bm.connections[backendID]
+	bm.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("backend not found: %s", backendID)
+	}
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "resources/list",
+		"params":  map[string]interface{}{},
+	}
+
+	respBytes, err := conn.sendRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result struct {
+			Resources []interface{} `json:"resources"`
+		} `json:"result"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse resources/list response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("backend error: %s", resp.Error.Message)
+	}
+
+	return resp.Result.Resources, nil
+}
+
+// ReadResource calls resources/read on a backend
+func (bm *BackendManager) ReadResource(ctx context.Context, backendID, uri string) (interface{}, error) {
+	bm.mu.RLock()
+	conn, exists := bm.connections[backendID]
+	bm.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("backend not found: %s", backendID)
+	}
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "resources/read",
+		"params": map[string]interface{}{
+			"uri": uri,
+		},
+	}
+
+	respBytes, err := conn.sendRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result struct {
+			Contents interface{} `json:"contents"`
+		} `json:"result"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse resources/read response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("backend error: %s", resp.Error.Message)
+	}
+
+	return resp.Result.Contents, nil
+}
+
+// ListResourceTemplates calls resources/templates/list on a backend
+func (bm *BackendManager) ListResourceTemplates(ctx context.Context, backendID string) ([]interface{}, error) {
+	bm.mu.RLock()
+	conn, exists := bm.connections[backendID]
+	bm.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("backend not found: %s", backendID)
+	}
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "resources/templates/list",
+		"params":  map[string]interface{}{},
+	}
+
+	respBytes, err := conn.sendRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result struct {
+			ResourceTemplates []interface{} `json:"resourceTemplates"`
+		} `json:"result"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse resources/templates/list response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("backend error: %s", resp.Error.Message)
+	}
+
+	return resp.Result.ResourceTemplates, nil
+}
+
+// SubscribeToResource calls resources/subscribe on a backend
+func (bm *BackendManager) SubscribeToResource(ctx context.Context, backendID, uri string) error {
+	bm.mu.RLock()
+	conn, exists := bm.connections[backendID]
+	bm.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("backend not found: %s", backendID)
+	}
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "resources/subscribe",
+		"params": map[string]interface{}{
+			"uri": uri,
+		},
+	}
+
+	respBytes, err := conn.sendRequest(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	var resp struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return fmt.Errorf("failed to parse resources/subscribe response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return fmt.Errorf("backend error: %s", resp.Error.Message)
+	}
+
+	return nil
+}
+
+// UnsubscribeFromResource calls resources/unsubscribe on a backend
+func (bm *BackendManager) UnsubscribeFromResource(ctx context.Context, backendID, uri string) error {
+	bm.mu.RLock()
+	conn, exists := bm.connections[backendID]
+	bm.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("backend not found: %s", backendID)
+	}
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "resources/unsubscribe",
+		"params": map[string]interface{}{
+			"uri": uri,
+		},
+	}
+
+	respBytes, err := conn.sendRequest(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	var resp struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return fmt.Errorf("failed to parse resources/unsubscribe response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return fmt.Errorf("backend error: %s", resp.Error.Message)
+	}
+
+	return nil
+}
+
+// ListPrompts calls prompts/list on a backend
+func (bm *BackendManager) ListPrompts(ctx context.Context, backendID string) ([]interface{}, error) {
+	bm.mu.RLock()
+	conn, exists := bm.connections[backendID]
+	bm.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("backend not found: %s", backendID)
+	}
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "prompts/list",
+		"params":  map[string]interface{}{},
+	}
+
+	respBytes, err := conn.sendRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result struct {
+			Prompts []interface{} `json:"prompts"`
+		} `json:"result"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse prompts/list response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("backend error: %s", resp.Error.Message)
+	}
+
+	return resp.Result.Prompts, nil
+}
+
+// GetPrompt calls prompts/get on a backend
+func (bm *BackendManager) GetPrompt(ctx context.Context, backendID, name string, arguments map[string]interface{}) (interface{}, error) {
+	bm.mu.RLock()
+	conn, exists := bm.connections[backendID]
+	bm.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("backend not found: %s", backendID)
+	}
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "prompts/get",
+		"params": map[string]interface{}{
+			"name":      name,
+			"arguments": arguments,
+		},
+	}
+
+	respBytes, err := conn.sendRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result interface{} `json:"result"`
+		Error  *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse prompts/get response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("backend error: %s", resp.Error.Message)
+	}
+
+	return resp.Result, nil
+}
+
+// GetCompletion calls completion/complete on a backend
+func (bm *BackendManager) GetCompletion(ctx context.Context, backendID, ref string, argument, metadata interface{}) (interface{}, error) {
+	bm.mu.RLock()
+	conn, exists := bm.connections[backendID]
+	bm.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("backend not found: %s", backendID)
+	}
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "completion/complete",
+		"params": map[string]interface{}{
+			"ref":       ref,
+			"argument":  argument,
+			"_meta":     metadata,
+		},
+	}
+
+	respBytes, err := conn.sendRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result interface{} `json:"result"`
+		Error  *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse completion/complete response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("backend error: %s", resp.Error.Message)
+	}
+
+	return resp.Result, nil
+}
