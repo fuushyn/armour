@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup-mcp-gateway.sh",
-            "description": "Update Armour's MCP servers with any newly installed plugins"
+            "command": "QUIET=1 PLUGIN_JSON=\"${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json\" bash ${CLAUDE_PLUGIN_ROOT}/scripts/update-plugin-servers.sh",
+            "description": "Update Armour's plugin.json with any newly installed plugins"
           }
         ]
       }

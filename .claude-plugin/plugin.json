@@ -9,7 +9,14 @@
   "homepage": "https://github.com/fuushyn/armour",
   "repository": "https://github.com/fuushyn/armour",
   "license": "MIT",
-  "keywords": ["mcp", "security", "proxy", "tools", "ai-safety", "gateway"],
+  "keywords": [
+    "mcp",
+    "security",
+    "proxy",
+    "tools",
+    "ai-safety",
+    "gateway"
+  ],
   "commands": [
     "./commands/backup.md",
     "./commands/recover.md",
@@ -23,7 +30,15 @@
       "name": "armour",
       "type": "stdio",
       "command": "${CLAUDE_PLUGIN_ROOT}/mcp-proxy",
-      "args": ["-mode", "stdio"]
+      "args": [
+        "-mode",
+        "stdio"
+      ]
+    },
+    {
+      "name": "exa",
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp"
     }
   ]
 }

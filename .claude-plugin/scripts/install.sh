@@ -61,11 +61,11 @@ fi
 mkdir -p "$CONFIG_DIR"
 echo -e "${GREEN}✓${NC} Database directory ready"
 
-# Set up MCP gateway - discover and proxy all plugin MCP servers
-echo -e "\n${YELLOW}Setting up Armour as unified MCP gateway...${NC}"
-ARMOUR_QUIET=0 bash "$PLUGIN_ROOT/../scripts/setup-mcp-gateway.sh" && \
-  echo -e "${GREEN}✓${NC} MCP gateway configured" || \
-  echo -e "${YELLOW}⚠${NC} MCP gateway setup will run on next Claude Code session"
+# Discover and add all installed plugin MCP servers to Armour's plugin.json
+echo -e "\n${YELLOW}Discovering plugin MCP servers...${NC}"
+QUIET=0 PLUGIN_JSON="$PLUGIN_ROOT/.claude-plugin/plugin.json" bash "$PLUGIN_ROOT/../scripts/update-plugin-servers.sh" && \
+  echo -e "${GREEN}✓${NC} Plugin servers configured" || \
+  echo -e "${YELLOW}⚠${NC} Plugin servers will be configured on next Claude Code session"
 
 # Print next steps
 echo -e "\n${GREEN}Installation Complete!${NC}\n"
