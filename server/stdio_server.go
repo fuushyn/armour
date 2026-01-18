@@ -32,6 +32,7 @@ type StdioServer struct {
 	registry       *proxy.ServerRegistry
 	logger         *proxy.Logger
 	policyManager  *PolicyManager
+	blocklist      *BlocklistMiddleware
 	backendManager *BackendManager
 	toolRegistry   *ToolRegistry
 	statsTracker   *StatsTracker
@@ -49,7 +50,7 @@ type StdioServer struct {
 }
 
 // NewStdioServer creates a new stdio-based MCP proxy server.
-func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker *StatsTracker, policyManager *PolicyManager) (*StdioServer, error) {
+func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker *StatsTracker, policyManager *PolicyManager, apiKey string) (*StdioServer, error) {
 	// Initialize database
 	db, err := initializeDB(config.DBPath)
 	if err != nil {
@@ -74,6 +75,9 @@ func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker 
 	// Create backend manager (will use the shared tool registry)
 	backendManager := NewBackendManager(registry, logger, toolRegistry)
 
+	// Create blocklist middleware
+	blocklist := NewBlocklistMiddleware(db, apiKey, statsTracker, logger)
+
 	s := &StdioServer{
 		config:         config,
 		db:             db,
@@ -86,6 +90,7 @@ func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker 
 		registry:       registry,
 		logger:         logger,
 		policyManager:  policyManager,
+		blocklist:      blocklist,
 		backendManager: backendManager,
 		toolRegistry:   toolRegistry,
 		statsTracker:   statsTracker,
@@ -95,6 +100,11 @@ func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker 
 	}
 
 	return s, nil
+}
+
+// SetBlocklist sets the blocklist middleware for this server
+func (s *StdioServer) SetBlocklist(blocklist *BlocklistMiddleware) {
+	s.blocklist = blocklist
 }
 
 // Run starts the stdio server, reading JSON-RPC requests from stdin and writing
@@ -240,6 +250,18 @@ func (s *StdioServer) handleToolsList(ctx context.Context, request JSONRPCReques
 		return s.makeError(request.ID, -32603, "Not initialized", "Call initialize first")
 	}
 
+	// Check blocklist for tools/list permission
+	if s.blocklist != nil {
+		result, err := s.blocklist.Check("tools/list", "", nil)
+		if err != nil {
+			s.logger.Error("blocklist check failed: %v", err)
+		}
+		if !result.Allowed {
+			s.statsTracker.RecordBlockedCall("tools/list", fmt.Sprintf("blocklist:%s", result.DeniedOperation))
+			return s.makeError(request.ID, -32001, "Operation denied", result.Error.Message)
+		}
+	}
+
 	// Wait for backend initialization to complete (up to 5 seconds)
 	s.backendManager.WaitForInitialization(ctx, 5*time.Second)
 
@@ -325,6 +347,25 @@ func (s *StdioServer) handleToolsCall(ctx context.Context, request JSONRPCReques
 		return s.handleProxyMigrateConfig(request.ID, params.Arguments)
 	}
 
+	// Parse arguments for blocklist checking
+	var argsMap map[string]interface{}
+	if err := json.Unmarshal(params.Arguments, &argsMap); err != nil {
+		// If we can't parse, use empty map for blocklist check
+		argsMap = make(map[string]interface{})
+	}
+
+	// Check blocklist for tools/call permission
+	if s.blocklist != nil {
+		result, err := s.blocklist.Check("tools/call", params.Name, argsMap)
+		if err != nil {
+			s.logger.Error("blocklist check failed: %v", err)
+		}
+		if !result.Allowed {
+			s.statsTracker.RecordBlockedCall(params.Name, fmt.Sprintf("blocklist:%s", result.DeniedOperation))
+			return s.makeError(request.ID, -32001, "Operation denied", result.Error.Message)
+		}
+	}
+
 	// Get the backend that owns this tool
 	backendID, err := s.toolRegistry.GetToolBackend(params.Name)
 	if err != nil {
@@ -337,6 +378,11 @@ func (s *StdioServer) handleToolsCall(ctx context.Context, request JSONRPCReques
 	if err != nil {
 		s.logger.Warn("tool metadata not found: %s", params.Name)
 		return s.makeError(request.ID, -32602, "Tool not found", params.Name)
+	}
+
+	// Record allowed call
+	if s.statsTracker != nil {
+		s.statsTracker.RecordAllowedCall(params.Name)
 	}
 
 	// Route to backend with the original tool name
@@ -353,6 +399,18 @@ func (s *StdioServer) handleToolsCall(ctx context.Context, request JSONRPCReques
 func (s *StdioServer) handleResourcesList(ctx context.Context, request JSONRPCRequest) interface{} {
 	if !s.initialized {
 		return s.makeError(request.ID, -32603, "Not initialized", "Call initialize first")
+	}
+
+	// Check blocklist for resources/list permission
+	if s.blocklist != nil {
+		result, err := s.blocklist.Check("resources/list", "", nil)
+		if err != nil {
+			s.logger.Error("blocklist check failed: %v", err)
+		}
+		if !result.Allowed {
+			s.statsTracker.RecordBlockedCall("resources/list", fmt.Sprintf("blocklist:%s", result.DeniedOperation))
+			return s.makeError(request.ID, -32001, "Operation denied", result.Error.Message)
+		}
 	}
 
 	s.backendManager.WaitForInitialization(ctx, 5*time.Second)
@@ -405,6 +463,18 @@ func (s *StdioServer) handleResourcesRead(ctx context.Context, request JSONRPCRe
 		return s.makeError(request.ID, -32602, "Invalid params", err.Error())
 	}
 
+	// Check blocklist for resources/read permission
+	if s.blocklist != nil {
+		result, err := s.blocklist.Check("resources/read", params.URI, nil)
+		if err != nil {
+			s.logger.Error("blocklist check failed: %v", err)
+		}
+		if !result.Allowed {
+			s.statsTracker.RecordBlockedCall("resources/read", fmt.Sprintf("blocklist:%s", result.DeniedOperation))
+			return s.makeError(request.ID, -32001, "Operation denied", result.Error.Message)
+		}
+	}
+
 	// Parse armour:// URI to extract backend name and original URI
 	backendName, originalURI := parseArmourURI(params.URI)
 	if backendName == "" {
@@ -429,6 +499,18 @@ func (s *StdioServer) handleResourcesRead(ctx context.Context, request JSONRPCRe
 func (s *StdioServer) handlePromptsList(ctx context.Context, request JSONRPCRequest) interface{} {
 	if !s.initialized {
 		return s.makeError(request.ID, -32603, "Not initialized", "Call initialize first")
+	}
+
+	// Check blocklist for prompts/list permission
+	if s.blocklist != nil {
+		result, err := s.blocklist.Check("prompts/list", "", nil)
+		if err != nil {
+			s.logger.Error("blocklist check failed: %v", err)
+		}
+		if !result.Allowed {
+			s.statsTracker.RecordBlockedCall("prompts/list", fmt.Sprintf("blocklist:%s", result.DeniedOperation))
+			return s.makeError(request.ID, -32001, "Operation denied", result.Error.Message)
+		}
 	}
 
 	s.backendManager.WaitForInitialization(ctx, 5*time.Second)
@@ -480,6 +562,18 @@ func (s *StdioServer) handlePromptsGet(ctx context.Context, request JSONRPCReque
 
 	if err := json.Unmarshal(request.Params, &params); err != nil {
 		return s.makeError(request.ID, -32602, "Invalid params", err.Error())
+	}
+
+	// Check blocklist for prompts/get permission
+	if s.blocklist != nil {
+		result, err := s.blocklist.Check("prompts/get", params.Name, params.Arguments)
+		if err != nil {
+			s.logger.Error("blocklist check failed: %v", err)
+		}
+		if !result.Allowed {
+			s.statsTracker.RecordBlockedCall("prompts/get", fmt.Sprintf("blocklist:%s", result.DeniedOperation))
+			return s.makeError(request.ID, -32001, "Operation denied", result.Error.Message)
+		}
 	}
 
 	// Parse namespaced prompt name (servername:promptname)

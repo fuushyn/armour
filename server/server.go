@@ -287,8 +287,35 @@ func initDB(db *sql.DB) error {
 		capability TEXT,
 		session_id TEXT,
 		transport TEXT,
+		blocked INTEGER DEFAULT 0,
+		block_reason TEXT,
+		matched_pattern TEXT,
+		denied_operation TEXT,
+		rule_action TEXT,
 		timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
+	CREATE TABLE IF NOT EXISTS blocklist_rules (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		pattern TEXT NOT NULL,
+		description TEXT,
+		action TEXT CHECK(action IN ('block', 'allow')) DEFAULT 'block',
+		is_regex INTEGER DEFAULT 0,
+		is_semantic INTEGER DEFAULT 1,
+		tools TEXT DEFAULT '',
+		perm_tools_call TEXT DEFAULT 'deny',
+		perm_tools_list TEXT DEFAULT 'allow',
+		perm_resources_read TEXT DEFAULT 'deny',
+		perm_resources_list TEXT DEFAULT 'allow',
+		perm_resources_subscribe TEXT DEFAULT 'deny',
+		perm_prompts_get TEXT DEFAULT 'deny',
+		perm_prompts_list TEXT DEFAULT 'allow',
+		perm_sampling TEXT DEFAULT 'deny',
+		enabled INTEGER DEFAULT 1,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_blocklist_enabled ON blocklist_rules(enabled);
+	CREATE INDEX IF NOT EXISTS idx_blocklist_action ON blocklist_rules(action);
 	`
 	_, err := db.Exec(schema)
 	return err

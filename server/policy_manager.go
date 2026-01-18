@@ -17,7 +17,14 @@ const (
 	PermissiveMode  PolicyMode = "permissive"  // Minimal restrictions
 )
 
-// PolicyManager centralizes policy enforcement across multiple security components.
+// DEPRECATED: PolicyManager is deprecated. Use BlocklistMiddleware instead.
+// The blocklist-based system provides more flexible, database-driven rule management.
+// This struct is maintained for backward compatibility only and will be removed in v2.0.0.
+//
+// Migration guide:
+// - Replace policy mode selection with blocklist rules
+// - Use /api/blocklist endpoints to manage rules
+// - See migration_blocklist.go for automated migration functions
 type PolicyManager struct {
 	mode              PolicyMode
 	samplingGuard     *proxy.SamplingGuard

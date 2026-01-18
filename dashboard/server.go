@@ -1,10 +1,12 @@
 package dashboard
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/user/mcp-go-proxy/proxy"
@@ -21,18 +23,30 @@ type Server struct {
 	registry      *proxy.ServerRegistry
 	statsTracker  *server.StatsTracker
 	policyManager *server.PolicyManager
+	blocklist     *server.BlocklistMiddleware
+	db            *sql.DB
 	logger        *proxy.Logger
 
 	mu sync.RWMutex
 }
 
 // NewDashboardServer creates a new dashboard server.
-func NewDashboardServer(listenAddr string, registry *proxy.ServerRegistry, statsTracker *server.StatsTracker, policyManager *server.PolicyManager, logger *proxy.Logger) *Server {
+func NewDashboardServer(
+	listenAddr string,
+	registry *proxy.ServerRegistry,
+	statsTracker *server.StatsTracker,
+	policyManager *server.PolicyManager,
+	blocklist *server.BlocklistMiddleware,
+	db *sql.DB,
+	logger *proxy.Logger,
+) *Server {
 	ds := &Server{
 		listenAddr:    listenAddr,
 		registry:      registry,
 		statsTracker:  statsTracker,
 		policyManager: policyManager,
+		blocklist:     blocklist,
+		db:            db,
 		logger:        logger,
 	}
 
@@ -43,6 +57,7 @@ func NewDashboardServer(listenAddr string, registry *proxy.ServerRegistry, stats
 	mux.HandleFunc("/api/servers", ds.handleServersAPI)
 	mux.HandleFunc("/api/servers/", ds.handleServerDetailAPI)
 	mux.HandleFunc("/api/policy", ds.handlePolicyAPI)
+	mux.HandleFunc("/api/blocklist", ds.handleBlocklistAPI)
 	mux.HandleFunc("/api/stats", ds.handleStatsAPI)
 	mux.HandleFunc("/api/audit", ds.handleAuditAPI)
 	mux.HandleFunc("/api/health", ds.handleHealthAPI)
@@ -50,6 +65,7 @@ func NewDashboardServer(listenAddr string, registry *proxy.ServerRegistry, stats
 	// UI endpoints
 	mux.HandleFunc("/", ds.handleDashboardUI)
 	mux.HandleFunc("/dashboard", ds.handleDashboardUI)
+	mux.HandleFunc("/blocklist", ds.handleBlocklistUI)
 	mux.HandleFunc("/audit", ds.handleAuditUI)
 	mux.HandleFunc("/settings", ds.handleSettingsUI)
 
@@ -197,6 +213,163 @@ func (ds *Server) handlePolicyAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleBlocklistAPI manages blocklist rules (CRUD operations).
+func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Extract rule ID from query parameter if present
+	ruleIDStr := r.URL.Query().Get("id")
+
+	switch r.Method {
+	case http.MethodGet:
+		// List all rules
+		rules, err := server.GetAllBlocklistRules(ds.db)
+		if err != nil {
+			ds.logger.Error("failed to get blocklist rules: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		response := map[string]interface{}{
+			"count": len(rules),
+			"rules": rules,
+		}
+
+		json.NewEncoder(w).Encode(response)
+
+	case http.MethodPost:
+		// Create new rule
+		var req struct {
+			Pattern     string `json:"pattern"`
+			Description string `json:"description,omitempty"`
+			Action      string `json:"action"`
+			IsRegex     bool   `json:"is_regex"`
+			IsSemantic  bool   `json:"is_semantic"`
+			Tools       string `json:"tools"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		rule := &server.BlocklistRule{
+			Pattern:     req.Pattern,
+			Description: req.Description,
+			Action:      req.Action,
+			IsRegex:     req.IsRegex,
+			IsSemantic:  req.IsSemantic,
+			Tools:       req.Tools,
+			Permissions: server.DefaultPermissions(req.Action),
+			Enabled:     true,
+		}
+
+		if err := server.CreateBlocklistRule(ds.db, rule); err != nil {
+			ds.logger.Error("failed to create blocklist rule: %v", err)
+			http.Error(w, "Failed to create rule", http.StatusInternalServerError)
+			return
+		}
+
+		// Refresh cache
+		if ds.blocklist != nil {
+			if err := ds.blocklist.RefreshRulesCache(); err != nil {
+				ds.logger.Warn("failed to refresh cache: %v", err)
+			}
+		}
+
+		json.NewEncoder(w).Encode(rule)
+
+	case http.MethodPut:
+		// Update existing rule
+		if ruleIDStr == "" {
+			http.Error(w, "Rule ID required", http.StatusBadRequest)
+			return
+		}
+
+		ruleID, err := strconv.ParseInt(ruleIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid rule ID", http.StatusBadRequest)
+			return
+		}
+
+		var req struct {
+			Pattern     string `json:"pattern"`
+			Description string `json:"description,omitempty"`
+			Action      string `json:"action"`
+			IsRegex     bool   `json:"is_regex"`
+			IsSemantic  bool   `json:"is_semantic"`
+			Tools       string `json:"tools"`
+			Enabled     bool   `json:"enabled"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		rule := &server.BlocklistRule{
+			ID:          ruleID,
+			Pattern:     req.Pattern,
+			Description: req.Description,
+			Action:      req.Action,
+			IsRegex:     req.IsRegex,
+			IsSemantic:  req.IsSemantic,
+			Tools:       req.Tools,
+			Permissions: server.DefaultPermissions(req.Action),
+			Enabled:     req.Enabled,
+		}
+
+		if err := server.UpdateBlocklistRule(ds.db, rule); err != nil {
+			ds.logger.Error("failed to update blocklist rule: %v", err)
+			http.Error(w, "Failed to update rule", http.StatusInternalServerError)
+			return
+		}
+
+		// Refresh cache
+		if ds.blocklist != nil {
+			if err := ds.blocklist.RefreshRulesCache(); err != nil {
+				ds.logger.Warn("failed to refresh cache: %v", err)
+			}
+		}
+
+		json.NewEncoder(w).Encode(rule)
+
+	case http.MethodDelete:
+		// Delete rule
+		if ruleIDStr == "" {
+			http.Error(w, "Rule ID required", http.StatusBadRequest)
+			return
+		}
+
+		ruleID, err := strconv.ParseInt(ruleIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid rule ID", http.StatusBadRequest)
+			return
+		}
+
+		if err := server.DeleteBlocklistRule(ds.db, ruleID); err != nil {
+			ds.logger.Error("failed to delete blocklist rule: %v", err)
+			http.Error(w, "Failed to delete rule", http.StatusInternalServerError)
+			return
+		}
+
+		// Refresh cache
+		if ds.blocklist != nil {
+			if err := ds.blocklist.RefreshRulesCache(); err != nil {
+				ds.logger.Warn("failed to refresh cache: %v", err)
+			}
+		}
+
+		response := map[string]string{
+			"status": "deleted",
+		}
+		json.NewEncoder(w).Encode(response)
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // handleStatsAPI returns statistics and KPIs.
 func (ds *Server) handleStatsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -255,6 +428,12 @@ func (ds *Server) handleDashboardUI(w http.ResponseWriter, r *http.Request) {
 func (ds *Server) handleAuditUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, getAuditHTML())
+}
+
+// handleBlocklistUI serves the blocklist management page.
+func (ds *Server) handleBlocklistUI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, getBlocklistHTML())
 }
 
 // handleSettingsUI serves the settings page.
@@ -583,6 +762,404 @@ func getSettingsHTML() string {
 			.then(r => r.json())
 			.then(data => alert('Policy updated: ' + data.mode));
 		}
+	</script>
+</body>
+</html>
+`
+}
+
+func getBlocklistHTML() string {
+	return `
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Blocklist Management - MCP Proxy</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+			background: #f5f5f5;
+			padding: 20px;
+		}
+
+		.container {
+			max-width: 1200px;
+			margin: 0 auto;
+		}
+
+		header {
+			background: white;
+			padding: 30px;
+			border-radius: 10px;
+			margin-bottom: 30px;
+			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+		}
+
+		h1 {
+			color: #333;
+			margin-bottom: 10px;
+		}
+
+		.btn {
+			background: #667eea;
+			color: white;
+			padding: 10px 20px;
+			border: none;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+		}
+
+		.btn:hover {
+			background: #764ba2;
+		}
+
+		.btn-danger {
+			background: #dc3545;
+		}
+
+		.btn-danger:hover {
+			background: #c82333;
+		}
+
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			background: white;
+			border-radius: 10px;
+			overflow: hidden;
+			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+		}
+
+		th, td {
+			padding: 12px 15px;
+			text-align: left;
+			border-bottom: 1px solid #eee;
+		}
+
+		th {
+			background: #667eea;
+			color: white;
+			font-weight: 600;
+		}
+
+		tr:hover {
+			background: #f9f9f9;
+		}
+
+		.badge {
+			display: inline-block;
+			padding: 4px 8px;
+			border-radius: 4px;
+			font-size: 12px;
+			font-weight: 600;
+		}
+
+		.badge-block {
+			background: #ffe0e0;
+			color: #c82333;
+		}
+
+		.badge-allow {
+			background: #e0ffe0;
+			color: #155724;
+		}
+
+		.badge-regex {
+			background: #e0e8ff;
+			color: #004085;
+		}
+
+		.badge-semantic {
+			background: #ffe0f5;
+			color: #6f0047;
+		}
+
+		.modal {
+			display: none;
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background: rgba(0,0,0,0.5);
+			z-index: 1000;
+		}
+
+		.modal.active {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+
+		.modal-content {
+			background: white;
+			padding: 30px;
+			border-radius: 10px;
+			max-width: 500px;
+			width: 90%;
+			max-height: 80vh;
+			overflow-y: auto;
+		}
+
+		.form-group {
+			margin-bottom: 15px;
+		}
+
+		label {
+			display: block;
+			margin-bottom: 5px;
+			color: #333;
+			font-weight: 500;
+		}
+
+		input, textarea, select {
+			width: 100%;
+			padding: 8px 12px;
+			border: 1px solid #ddd;
+			border-radius: 6px;
+			font-family: inherit;
+			font-size: 14px;
+		}
+
+		textarea {
+			resize: vertical;
+			min-height: 60px;
+		}
+
+		.checkbox-group {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+		}
+
+		.nav {
+			margin-top: 20px;
+			padding-top: 20px;
+			border-top: 1px solid #eee;
+		}
+
+		.nav a {
+			color: #667eea;
+			text-decoration: none;
+			margin-right: 15px;
+		}
+
+		.nav a:hover {
+			text-decoration: underline;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<header>
+			<h1>🔒 Blocklist Management</h1>
+			<p style="color: #666;">Manage tool blocklisting rules</p>
+			<button class="btn" onclick="openModal()">+ New Rule</button>
+		</header>
+
+		<table>
+			<thead>
+				<tr>
+					<th>Pattern</th>
+					<th>Description</th>
+					<th>Action</th>
+					<th>Type</th>
+					<th>Tools</th>
+					<th>Status</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody id="rules-table">
+				<tr><td colspan="7" style="text-align: center; color: #999;">Loading rules...</td></tr>
+			</tbody>
+		</table>
+
+		<div class="nav">
+			<a href="/">← Back to Dashboard</a>
+			<a href="/audit">📊 Audit Log</a>
+			<a href="/settings">⚙️ Settings</a>
+		</div>
+	</div>
+
+	<!-- Modal for create/edit -->
+	<div class="modal" id="modal">
+		<div class="modal-content">
+			<h2>Add New Rule</h2>
+			<form onsubmit="saveRule(event)">
+				<div class="form-group">
+					<label for="pattern">Pattern/Topic:</label>
+					<input type="text" id="pattern" required>
+				</div>
+
+				<div class="form-group">
+					<label for="description">Description:</label>
+					<textarea id="description"></textarea>
+				</div>
+
+				<div class="form-group">
+					<label for="action">Action:</label>
+					<select id="action" onchange="updatePermissions()">
+						<option value="block">Block</option>
+						<option value="allow">Allow</option>
+					</select>
+				</div>
+
+				<div class="form-group">
+					<label>Match Type:</label>
+					<div>
+						<label class="checkbox-group">
+							<input type="checkbox" id="is_regex"> Regex
+						</label>
+						<label class="checkbox-group">
+							<input type="checkbox" id="is_semantic" checked> Semantic
+						</label>
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label for="tools">Tools (comma-separated, leave empty for all):</label>
+					<input type="text" id="tools" placeholder="tool1, tool2">
+				</div>
+
+				<div class="form-group">
+					<label>Permissions:</label>
+					<div id="permissions-grid"></div>
+				</div>
+
+				<button type="submit" class="btn">Save Rule</button>
+				<button type="button" class="btn" onclick="closeModal()" style="background: #6c757d;">Cancel</button>
+			</form>
+		</div>
+	</div>
+
+	<script>
+		let editingRuleId = null;
+
+		function loadRules() {
+			fetch('/api/blocklist')
+				.then(r => r.json())
+				.then(data => {
+					const tbody = document.getElementById('rules-table');
+					tbody.innerHTML = '';
+
+					if (!data.rules || data.rules.length === 0) {
+						tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999;">No rules configured</td></tr>';
+						return;
+					}
+
+					data.rules.forEach(rule => {
+						const row = document.createElement('tr');
+						const typeBadges = [];
+						if (rule.is_regex) typeBadges.push('<span class="badge badge-regex">Regex</span>');
+						if (rule.is_semantic) typeBadges.push('<span class="badge badge-semantic">Semantic</span>');
+
+						row.innerHTML = ` + "`" + `
+							<td><code>${rule.pattern}</code></td>
+							<td>${rule.description || '-'}</td>
+							<td><span class="badge ${rule.action === 'block' ? 'badge-block' : 'badge-allow'}">${rule.action}</span></td>
+							<td>${typeBadges.join(' ')}</td>
+							<td>${rule.tools || 'All'}</td>
+							<td>${rule.enabled ? '✓ Enabled' : '✗ Disabled'}</td>
+							<td>
+								<button class="btn" onclick="editRule(${rule.id})">Edit</button>
+								<button class="btn btn-danger" onclick="deleteRule(${rule.id})">Delete</button>
+							</td>
+						` + "`" + `;
+						tbody.appendChild(row);
+					});
+				})
+				.catch(err => {
+					console.error('Failed to load rules:', err);
+					document.getElementById('rules-table').innerHTML = '<tr><td colspan="7" style="text-align: center; color: red;">Error loading rules</td></tr>';
+				});
+		}
+
+		function openModal() {
+			editingRuleId = null;
+			document.getElementById('pattern').value = '';
+			document.getElementById('description').value = '';
+			document.getElementById('action').value = 'block';
+			document.getElementById('is_regex').checked = false;
+			document.getElementById('is_semantic').checked = true;
+			document.getElementById('tools').value = '';
+			updatePermissions();
+			document.getElementById('modal').classList.add('active');
+		}
+
+		function closeModal() {
+			document.getElementById('modal').classList.remove('active');
+		}
+
+		function editRule(ruleId) {
+			fetch('/api/blocklist?id=' + ruleId)
+				.then(r => r.json())
+				.then(rule => {
+					editingRuleId = ruleId;
+					document.getElementById('pattern').value = rule.pattern;
+					document.getElementById('description').value = rule.description || '';
+					document.getElementById('action').value = rule.action;
+					document.getElementById('is_regex').checked = rule.is_regex;
+					document.getElementById('is_semantic').checked = rule.is_semantic;
+					document.getElementById('tools').value = rule.tools || '';
+					updatePermissions();
+					document.getElementById('modal').classList.add('active');
+				});
+		}
+
+		function saveRule(event) {
+			event.preventDefault();
+
+			const rule = {
+				pattern: document.getElementById('pattern').value,
+				description: document.getElementById('description').value,
+				action: document.getElementById('action').value,
+				is_regex: document.getElementById('is_regex').checked,
+				is_semantic: document.getElementById('is_semantic').checked,
+				tools: document.getElementById('tools').value
+			};
+
+			const url = editingRuleId ? '/api/blocklist?id=' + editingRuleId : '/api/blocklist';
+			const method = editingRuleId ? 'PUT' : 'POST';
+
+			fetch(url, {
+				method: method,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(rule)
+			})
+			.then(r => r.json())
+			.then(data => {
+				closeModal();
+				loadRules();
+				alert('Rule saved successfully');
+			})
+			.catch(err => alert('Error saving rule: ' + err));
+		}
+
+		function deleteRule(ruleId) {
+			if (confirm('Delete this rule?')) {
+				fetch('/api/blocklist?id=' + ruleId, { method: 'DELETE' })
+					.then(r => r.json())
+					.then(data => {
+						loadRules();
+						alert('Rule deleted successfully');
+					})
+					.catch(err => alert('Error deleting rule: ' + err));
+			}
+		}
+
+		function updatePermissions() {
+			// Placeholder for permissions UI
+			document.getElementById('permissions-grid').innerHTML = '(Permissions configured automatically)';
+		}
+
+		// Load rules on page load
+		loadRules();
 	</script>
 </body>
 </html>
