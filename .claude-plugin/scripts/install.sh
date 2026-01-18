@@ -61,12 +61,18 @@ fi
 mkdir -p "$CONFIG_DIR"
 echo -e "${GREEN}✓${NC} Database directory ready"
 
+# Set up MCP gateway - discover and proxy all plugin MCP servers
+echo -e "\n${YELLOW}Setting up Armour as unified MCP gateway...${NC}"
+ARMOUR_QUIET=0 bash "$PLUGIN_ROOT/../scripts/setup-mcp-gateway.sh" && \
+  echo -e "${GREEN}✓${NC} MCP gateway configured" || \
+  echo -e "${YELLOW}⚠${NC} MCP gateway setup will run on next Claude Code session"
+
 # Print next steps
 echo -e "\n${GREEN}Installation Complete!${NC}\n"
 echo "Next steps:"
-echo "1. In Claude Code, run: /sentinel setup"
-echo "2. Your MCP servers will be auto-detected and protected"
-echo "3. Restart Claude Code to apply the security layer\n"
+echo "1. Restart Claude Code"
+echo "2. All plugin MCP servers will be proxied through Armour"
+echo "3. Check dashboard at http://localhost:13337 for security policies\n"
 
 echo "Optional commands:"
 echo "  mcp-proxy detect          - Show detected MCP servers"

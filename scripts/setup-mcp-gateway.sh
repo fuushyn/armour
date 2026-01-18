@@ -5,8 +5,20 @@
 # 2. Extracts MCP server configs from plugin.json and marketplace.json
 # 3. Merges them into Armour's servers.json
 # 4. Creates managed-mcp.json allowlist to disable direct plugin MCP connections
+#
+# Can be called from:
+# - Plugin installation script (verbose output)
+# - SessionStart hook (silent mode when ARMOUR_QUIET=1)
 
 set -e
+
+# Check if running in quiet mode (from SessionStart hook)
+QUIET="${ARMOUR_QUIET:-0}"
+log() {
+  if [ "$QUIET" = "0" ]; then
+    echo -e "$@"
+  fi
+}
 
 PLUGINS_DIR="${HOME}/.claude/plugins"
 ARMOUR_CONFIG_DIR="${HOME}/.armour"
@@ -107,7 +119,7 @@ fi
 discovered_servers=()
 
 if [ -d "$PLUGINS_DIR" ]; then
-  echo "[Armour SessionStart] Scanning plugins for MCP servers..."
+  log "[Armour] Scanning plugins for MCP servers..."
 
   # Find all plugin.json and marketplace.json files
   while IFS= read -r manifest_file; do
@@ -124,7 +136,7 @@ if [ -d "$PLUGINS_DIR" ]; then
       continue
     fi
 
-    echo "[Armour SessionStart] Processing: $manifest_file"
+    log "[Armour] Processing: $manifest_file"
 
     if [ "$filename" = "marketplace.json" ]; then
       extract_marketplace_mcp_servers "$manifest_file"
@@ -223,7 +235,7 @@ except Exception as e:
 PYTHON_EOF
 
 # Create/update managed-mcp.json to allowlist only armour
-echo "[Armour SessionStart] Setting up managed-mcp.json..."
+log "[Armour] Setting up managed-mcp.json..."
 cat > "$MANAGED_MCP" << 'JSON_EOF'
 {
   "mcp": {
@@ -233,6 +245,6 @@ cat > "$MANAGED_MCP" << 'JSON_EOF'
 }
 JSON_EOF
 
-echo "[Armour SessionStart] ✓ Completed MCP gateway setup"
-echo "[Armour SessionStart] - Servers configured in: $SERVERS_JSON"
-echo "[Armour SessionStart] - MCP policy configured in: $MANAGED_MCP"
+log "[Armour] ✓ Completed MCP gateway setup"
+log "[Armour] - Servers configured in: $SERVERS_JSON"
+log "[Armour] - MCP policy configured in: $MANAGED_MCP"
