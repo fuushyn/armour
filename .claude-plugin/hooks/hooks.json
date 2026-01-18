@@ -1,7 +1,15 @@
 {
-  "description": "Auto-sync newly added MCP servers to Sentinel registry",
+  "description": "Armour plugin hooks for dashboard startup and server sync",
   "hooks": {
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/start-dashboard.sh"
+          }
+        ]
+      },
       {
         "hooks": [
           {
