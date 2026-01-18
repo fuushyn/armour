@@ -1,7 +1,7 @@
 {
   "name": "armour",
-  "version": "1.0.0",
-  "description": "Security-enhanced MCP proxy. Block destructive tool calls, audit operations, and recover configs with /armour backup/recover commands.",
+  "version": "1.1.0",
+  "description": "Security-enhanced MCP proxy. Proxies all plugin MCP servers through a unified security layer. Block destructive tool calls, audit operations, and recover configs with /armour commands.",
   "author": {
     "name": "fuushyn",
     "url": "https://github.com/fuushyn"
@@ -9,7 +9,7 @@
   "homepage": "https://github.com/fuushyn/armour",
   "repository": "https://github.com/fuushyn/armour",
   "license": "MIT",
-  "keywords": ["mcp", "security", "proxy", "tools", "ai-safety"],
+  "keywords": ["mcp", "security", "proxy", "tools", "ai-safety", "gateway"],
   "commands": [
     "./commands/backup.md",
     "./commands/recover.md",
@@ -22,7 +22,7 @@
     {
       "name": "armour",
       "type": "stdio",
-      "command": "/Users/devel12/dev/armour/mcp-go-proxy",
+      "command": "${CLAUDE_PLUGIN_ROOT}/mcp-proxy",
       "args": ["-mode", "stdio"]
     }
   ]
