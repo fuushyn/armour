@@ -8,6 +8,11 @@
             "type": "command",
             "command": "QUIET=1 bash ${CLAUDE_PLUGIN_ROOT}/scripts/discover-plugin-servers.sh",
             "description": "Discover and add any newly installed plugin MCP servers to ~/.armour/servers.json"
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/enable-plugin.sh",
+            "description": "Enable the armour plugin on session start"
           }
         ]
       }
