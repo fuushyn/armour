@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/user/mcp-go-proxy/proxy"
@@ -222,6 +223,24 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+		if ruleIDStr != "" {
+			ruleID, err := strconv.ParseInt(ruleIDStr, 10, 64)
+			if err != nil {
+				http.Error(w, "Invalid rule ID", http.StatusBadRequest)
+				return
+			}
+
+			rule, err := server.GetBlocklistRuleByID(ds.db, ruleID)
+			if err != nil {
+				ds.logger.Error("failed to get blocklist rule: %v", err)
+				http.Error(w, "Rule not found", http.StatusNotFound)
+				return
+			}
+
+			json.NewEncoder(w).Encode(rule)
+			return
+		}
+
 		// List all rules
 		rules, err := server.GetAllBlocklistRules(ds.db)
 		if err != nil {
@@ -240,12 +259,14 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		// Create new rule
 		var req struct {
-			Pattern     string `json:"pattern"`
-			Description string `json:"description,omitempty"`
-			Action      string `json:"action"`
-			IsRegex     bool   `json:"is_regex"`
-			IsSemantic  bool   `json:"is_semantic"`
-			Tools       string `json:"tools"`
+			Pattern     string              `json:"pattern"`
+			Description string              `json:"description,omitempty"`
+			Action      string              `json:"action"`
+			IsRegex     bool                `json:"is_regex"`
+			IsSemantic  bool                `json:"is_semantic"`
+			Tools       string              `json:"tools"`
+			Enabled     *bool               `json:"enabled,omitempty"`
+			Permissions *server.Permissions `json:"permissions,omitempty"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -253,15 +274,32 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		pattern := strings.TrimSpace(req.Pattern)
+		if pattern == "" {
+			http.Error(w, "Pattern required", http.StatusBadRequest)
+			return
+		}
+
+		action, err := normalizeBlocklistAction(req.Action)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		enabled := true
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+
 		rule := &server.BlocklistRule{
-			Pattern:     req.Pattern,
+			Pattern:     pattern,
 			Description: req.Description,
-			Action:      req.Action,
+			Action:      action,
 			IsRegex:     req.IsRegex,
 			IsSemantic:  req.IsSemantic,
 			Tools:       req.Tools,
-			Permissions: server.DefaultPermissions(req.Action),
-			Enabled:     true,
+			Permissions: normalizePermissions(action, req.Permissions),
+			Enabled:     enabled,
 		}
 
 		if err := server.CreateBlocklistRule(ds.db, rule); err != nil {
@@ -293,13 +331,14 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var req struct {
-			Pattern     string `json:"pattern"`
-			Description string `json:"description,omitempty"`
-			Action      string `json:"action"`
-			IsRegex     bool   `json:"is_regex"`
-			IsSemantic  bool   `json:"is_semantic"`
-			Tools       string `json:"tools"`
-			Enabled     bool   `json:"enabled"`
+			Pattern     string              `json:"pattern"`
+			Description string              `json:"description,omitempty"`
+			Action      string              `json:"action"`
+			IsRegex     bool                `json:"is_regex"`
+			IsSemantic  bool                `json:"is_semantic"`
+			Tools       string              `json:"tools"`
+			Enabled     *bool               `json:"enabled,omitempty"`
+			Permissions *server.Permissions `json:"permissions,omitempty"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -307,16 +346,45 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		pattern := strings.TrimSpace(req.Pattern)
+		if pattern == "" {
+			http.Error(w, "Pattern required", http.StatusBadRequest)
+			return
+		}
+
+		action, err := normalizeBlocklistAction(req.Action)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		existingRule, err := server.GetBlocklistRuleByID(ds.db, ruleID)
+		if err != nil {
+			ds.logger.Error("failed to get blocklist rule: %v", err)
+			http.Error(w, "Rule not found", http.StatusNotFound)
+			return
+		}
+
+		enabled := existingRule.Enabled
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+
+		permissions := existingRule.Permissions
+		if req.Permissions != nil {
+			permissions = normalizePermissions(action, req.Permissions)
+		}
+
 		rule := &server.BlocklistRule{
 			ID:          ruleID,
-			Pattern:     req.Pattern,
+			Pattern:     pattern,
 			Description: req.Description,
-			Action:      req.Action,
+			Action:      action,
 			IsRegex:     req.IsRegex,
 			IsSemantic:  req.IsSemantic,
 			Tools:       req.Tools,
-			Permissions: server.DefaultPermissions(req.Action),
-			Enabled:     req.Enabled,
+			Permissions: permissions,
+			Enabled:     enabled,
 		}
 
 		if err := server.UpdateBlocklistRule(ds.db, rule); err != nil {
@@ -370,6 +438,51 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func normalizeBlocklistAction(action string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(action))
+	if normalized == "" {
+		return "", fmt.Errorf("Action required")
+	}
+	if normalized != "block" && normalized != "allow" {
+		return "", fmt.Errorf("Invalid action: %s", action)
+	}
+	return normalized, nil
+}
+
+func normalizePermissions(action string, perms *server.Permissions) server.Permissions {
+	defaults := server.DefaultPermissions(action)
+	if perms == nil {
+		return defaults
+	}
+
+	merged := *perms
+	if merged.ToolsCall == "" {
+		merged.ToolsCall = defaults.ToolsCall
+	}
+	if merged.ToolsList == "" {
+		merged.ToolsList = defaults.ToolsList
+	}
+	if merged.ResourcesRead == "" {
+		merged.ResourcesRead = defaults.ResourcesRead
+	}
+	if merged.ResourcesList == "" {
+		merged.ResourcesList = defaults.ResourcesList
+	}
+	if merged.ResourcesSubscribe == "" {
+		merged.ResourcesSubscribe = defaults.ResourcesSubscribe
+	}
+	if merged.PromptsGet == "" {
+		merged.PromptsGet = defaults.PromptsGet
+	}
+	if merged.PromptsList == "" {
+		merged.PromptsList = defaults.PromptsList
+	}
+	if merged.Sampling == "" {
+		merged.Sampling = defaults.Sampling
+	}
+	return merged
+}
+
 // handleStatsAPI returns statistics and KPIs.
 func (ds *Server) handleStatsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -408,7 +521,7 @@ func (ds *Server) handleHealthAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"status": "ok",
+		"status":  "ok",
 		"version": "1.0.0",
 	}
 
@@ -421,25 +534,25 @@ func (ds *Server) handleHealthAPI(w http.ResponseWriter, r *http.Request) {
 // handleDashboardUI serves the main dashboard page.
 func (ds *Server) handleDashboardUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, getDashboardHTML())
+	fmt.Fprint(w, getUnifiedDashboardHTML())
 }
 
 // handleAuditUI serves the audit log page.
 func (ds *Server) handleAuditUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, getAuditHTML())
+	fmt.Fprint(w, getUnifiedDashboardHTML())
 }
 
 // handleBlocklistUI serves the blocklist management page.
 func (ds *Server) handleBlocklistUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, getBlocklistHTML())
+	fmt.Fprint(w, getUnifiedDashboardHTML())
 }
 
 // handleSettingsUI serves the settings page.
 func (ds *Server) handleSettingsUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, getSettingsHTML())
+	fmt.Fprint(w, getUnifiedDashboardHTML())
 }
 
 // HTML Templates
