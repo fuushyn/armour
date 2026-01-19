@@ -4,6 +4,16 @@
 
 ## Installation
 
+### One-line install (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/scripts/install-armour.sh | bash
+```
+
+This installs the marketplace, installs the plugin, and enables it. Restart Claude Code to load the plugin.
+
+### Manual install
+
 1. **Add marketplace** in Claude Code:
    ```
    /plugin add-marketplace fuushyn/armour
