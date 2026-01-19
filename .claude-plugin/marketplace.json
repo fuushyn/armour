@@ -1,15 +1,17 @@
 {
   "name": "armour-marketplace",
   "owner": {
-    "name": "fuushyn",
-    "url": "https://github.com/fuushyn"
+    "name": "fuushyn"
+  },
+  "metadata": {
+    "description": "Armour plugins for Claude Code"
   },
   "plugins": [
     {
       "name": "armour",
-      "version": "1.0.0",
-      "description": "Security-enhanced MCP proxy with policy controls",
-      "source": "./.claude-plugin"
+      "source": "./",
+      "description": "Security-enhanced MCP proxy with policy controls and recovery tools",
+      "version": "1.0.0"
     }
   ]
 }

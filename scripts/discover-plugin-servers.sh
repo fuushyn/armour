@@ -7,14 +7,17 @@ set -e
 PLUGINS_DIR="${HOME}/.claude/plugins"
 ARMOUR_CONFIG_DIR="${HOME}/.armour"
 SERVERS_JSON="${ARMOUR_CONFIG_DIR}/servers.json"
+LOG_FILE="${ARMOUR_CONFIG_DIR}/hooks.log"
 
 log() {
+  local msg="[$(date +'%Y-%m-%d %H:%M:%S')] [discover-servers] $*"
   if [ "${QUIET:-0}" = "0" ]; then
-    echo -e "$@"
+    echo -e "$msg"
   fi
+  echo "$msg" >> "$LOG_FILE" 2>/dev/null || true
 }
 
-log "[Armour] Discovering plugin MCP servers..."
+log "Starting plugin server discovery..."
 
 # Ensure config directory exists
 mkdir -p "$ARMOUR_CONFIG_DIR"
@@ -78,10 +81,26 @@ if os.path.isdir(plugins_dir):
       # Check plugin.json
       if "plugin.json" in files:
         try:
+          plugin_root = Path(root).parent
           with open(os.path.join(root, "plugin.json")) as f:
             manifest = json.load(f)
-            if "mcpServers" in manifest and isinstance(manifest["mcpServers"], list):
-              for server_config in manifest["mcpServers"]:
+            mcp_servers = manifest.get("mcpServers")
+            if isinstance(mcp_servers, dict):
+              for server_name, server_config in mcp_servers.items():
+                if server_name and server_name != "armour" and server_name not in discovered:
+                  discovered[server_name] = {
+                    "name": server_name,
+                    "transport": server_config.get("type", "http"),
+                  }
+                  if "url" in server_config:
+                    discovered[server_name]["url"] = server_config["url"]
+                  if "command" in server_config:
+                    discovered[server_name]["command"] = server_config["command"]
+                  if "args" in server_config:
+                    discovered[server_name]["args"] = server_config["args"]
+                  print(f"[Armour] Found: {server_name} (plugin.json)", file=sys.stderr)
+            elif isinstance(mcp_servers, list):
+              for server_config in mcp_servers:
                 server_name = server_config.get("name")
                 if server_name and server_name != "armour" and server_name not in discovered:
                   discovered[server_name] = {
@@ -95,6 +114,24 @@ if os.path.isdir(plugins_dir):
                   if "args" in server_config:
                     discovered[server_name]["args"] = server_config["args"]
                   print(f"[Armour] Found: {server_name} (plugin.json)", file=sys.stderr)
+            elif isinstance(mcp_servers, str):
+              mcp_path = (plugin_root / mcp_servers).resolve()
+              if mcp_path.is_file():
+                with open(mcp_path) as f:
+                  config = json.load(f)
+                for server_name, server_config in config.get("mcpServers", {}).items():
+                  if server_name and server_name != "armour" and server_name not in discovered:
+                    discovered[server_name] = {
+                      "name": server_name,
+                      "transport": server_config.get("type", "http"),
+                    }
+                    if "url" in server_config:
+                      discovered[server_name]["url"] = server_config["url"]
+                    if "command" in server_config:
+                      discovered[server_name]["command"] = server_config["command"]
+                    if "args" in server_config:
+                      discovered[server_name]["args"] = server_config["args"]
+                    print(f"[Armour] Found: {server_name} (plugin.json mcpServers path)", file=sys.stderr)
         except Exception as e:
           pass
 

@@ -22,15 +22,11 @@
     "./commands/recover.md",
     "./commands/status.md"
   ],
-  "hooks": [
-    "./hooks/hooks.json"
-  ],
-  "mcpServers": [
-    {
-      "name": "armour",
+  "mcpServers": {
+    "armour": {
       "type": "stdio",
       "command": "${CLAUDE_PLUGIN_ROOT}/armour",
       "args": ["-mode", "stdio", "-config", "${HOME}/.armour/servers.json"]
     }
-  ]
+  }
 }

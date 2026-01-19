@@ -187,8 +187,8 @@ func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServe
 	}
 
 	var pluginManifest struct {
-		Name       string                   `json:"name"`
-		MCPServers []map[string]interface{} `json:"mcpServers"`
+		Name       string      `json:"name"`
+		MCPServers interface{} `json:"mcpServers"`
 	}
 
 	if err := json.Unmarshal(data, &pluginManifest); err != nil {
@@ -196,44 +196,91 @@ func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServe
 		return nil
 	}
 
-	if len(pluginManifest.MCPServers) == 0 {
-		return nil // Plugin doesn't provide MCP servers
-	}
-
 	var servers []proxy.ServerEntry
 
 	// Process each MCP server declared in the plugin
-	for _, serverConfig := range pluginManifest.MCPServers {
-		serverName, ok := serverConfig["name"].(string)
-		if !ok {
-			bm.logger.Debug("plugin %s: MCP server missing 'name' field, skipping", pluginManifest.Name)
-			continue
+	switch mcpServers := pluginManifest.MCPServers.(type) {
+	case map[string]interface{}:
+		for serverName, serverRaw := range mcpServers {
+			serverConfig, ok := serverRaw.(map[string]interface{})
+			if !ok {
+				bm.logger.Debug("plugin %s: MCP server '%s' has invalid config shape", pluginManifest.Name, serverName)
+				continue
+			}
+			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers)...)
 		}
-
-		// Skip if we've already seen this server (avoid duplicates)
-		if seenServers[serverName] {
-			bm.logger.Debug("plugin %s: skipping duplicate MCP server '%s'", pluginManifest.Name, serverName)
-			continue
+	case []interface{}:
+		for _, serverRaw := range mcpServers {
+			serverConfig, ok := serverRaw.(map[string]interface{})
+			if !ok {
+				bm.logger.Debug("plugin %s: MCP server entry has invalid config shape", pluginManifest.Name)
+				continue
+			}
+			serverName, ok := serverConfig["name"].(string)
+			if !ok {
+				bm.logger.Debug("plugin %s: MCP server missing 'name' field, skipping", pluginManifest.Name)
+				continue
+			}
+			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers)...)
 		}
-
-		// Skip Armour's own MCP server to avoid circular references
-		if serverName == "armour" || serverName == "mcp-go-proxy" {
-			bm.logger.Debug("plugin %s: skipping Armour's own MCP server", pluginManifest.Name)
-			continue
+	case string:
+		pluginDir := filepath.Dir(filepath.Dir(pluginJSONPath))
+		mcpPath := filepath.Join(pluginDir, mcpServers)
+		data, err := os.ReadFile(mcpPath)
+		if err != nil {
+			bm.logger.Debug("failed to read mcpServers path %s: %v", mcpPath, err)
+			return servers
 		}
-
-		seenServers[serverName] = true
-
-		// Convert plugin server config to ServerEntry
-		entry := bm.convertPluginMCPServerToEntry(serverName, serverConfig)
-		if entry != nil {
-			bm.logger.Debug("discovered MCP server '%s' from plugin '%s' (%s)",
-				serverName, pluginManifest.Name, entry.Transport)
-			servers = append(servers, *entry)
+		var mcpConfig struct {
+			MCPServers map[string]interface{} `json:"mcpServers"`
 		}
+		if err := json.Unmarshal(data, &mcpConfig); err != nil {
+			bm.logger.Debug("failed to parse mcpServers file %s: %v", mcpPath, err)
+			return servers
+		}
+		for serverName, serverRaw := range mcpConfig.MCPServers {
+			serverConfig, ok := serverRaw.(map[string]interface{})
+			if !ok {
+				bm.logger.Debug("plugin %s: MCP server '%s' has invalid config shape", pluginManifest.Name, serverName)
+				continue
+			}
+			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers)...)
+		}
+	default:
+		return nil // Plugin doesn't provide MCP servers
 	}
 
 	return servers
+}
+
+func (bm *BackendManager) buildServerEntry(pluginName string, serverName string, serverConfig map[string]interface{}, seenServers map[string]bool) []proxy.ServerEntry {
+	if serverName == "" {
+		bm.logger.Debug("plugin %s: MCP server missing name, skipping", pluginName)
+		return nil
+	}
+
+	// Skip if we've already seen this server (avoid duplicates)
+	if seenServers[serverName] {
+		bm.logger.Debug("plugin %s: skipping duplicate MCP server '%s'", pluginName, serverName)
+		return nil
+	}
+
+	// Skip Armour's own MCP server to avoid circular references
+	if serverName == "armour" || serverName == "mcp-go-proxy" {
+		bm.logger.Debug("plugin %s: skipping Armour's own MCP server", pluginName)
+		return nil
+	}
+
+	seenServers[serverName] = true
+
+	// Convert plugin server config to ServerEntry
+	entry := bm.convertPluginMCPServerToEntry(serverName, serverConfig)
+	if entry != nil {
+		bm.logger.Debug("discovered MCP server '%s' from plugin '%s' (%s)",
+			serverName, pluginName, entry.Transport)
+		return []proxy.ServerEntry{*entry}
+	}
+	return nil
 }
 
 // convertPluginMCPServerToEntry converts a plugin's MCP server declaration to a ServerEntry
@@ -402,13 +449,13 @@ type Tool struct {
 
 // BackendManager manages connections to multiple backend MCP servers.
 type BackendManager struct {
-	registry            *proxy.ServerRegistry
-	logger              *proxy.Logger
-	connections         map[string]*BackendConnection
-	mu                  sync.RWMutex
-	toolRegistry        *ToolRegistry
-	initializationDone  chan struct{}
-	initializationOnce  sync.Once
+	registry           *proxy.ServerRegistry
+	logger             *proxy.Logger
+	connections        map[string]*BackendConnection
+	mu                 sync.RWMutex
+	toolRegistry       *ToolRegistry
+	initializationDone chan struct{}
+	initializationOnce sync.Once
 }
 
 // NewBackendManager creates a new backend manager.
@@ -627,8 +674,8 @@ func (bc *BackendConnection) initialize(ctx context.Context) error {
 			ProtocolVersion string `json:"protocolVersion"`
 		} `json:"result"`
 		Error *struct {
-			Code    int         `json:"code"`
-			Message string      `json:"message"`
+			Code    int    `json:"code"`
+			Message string `json:"message"`
 		} `json:"error"`
 	}
 
@@ -1148,9 +1195,9 @@ func (bm *BackendManager) GetCompletion(ctx context.Context, backendID, ref stri
 		"id":      1,
 		"method":  "completion/complete",
 		"params": map[string]interface{}{
-			"ref":       ref,
-			"argument":  argument,
-			"_meta":     metadata,
+			"ref":      ref,
+			"argument": argument,
+			"_meta":    metadata,
 		},
 	}
 
