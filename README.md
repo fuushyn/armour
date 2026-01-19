@@ -4,14 +4,23 @@
 
 ## Installation
 
-### One-line install (recommended)
+### One-line install (binary bundle)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/scripts/install-armour.sh | bash
 ```
 
-This installs the marketplace, installs the plugin, and enables it by writing to `~/.claude/settings.json`. Restart Claude Code to load the plugin.
-Use `ARMOUR_MARKETPLACE_SOURCE` to override the marketplace source (for example, `https://github.com/fuushyn/armour.git`).
+This downloads a prebuilt plugin bundle, installs the marketplace locally, installs the plugin, and enables it by writing to `~/.claude/settings.json`.
+Restart Claude Code to load the plugin.
+
+Overrides:
+```
+ARMOUR_RELEASE_TAG=v1.0.3
+ARMOUR_RELEASE_URL=https://github.com/fuushyn/armour/releases/download/v1.0.3/armour-plugin-darwin-arm64.tar.gz
+ARMOUR_INSTALL_DIR=~/.armour/armour-plugin
+```
+
+Use `ARMOUR_MARKETPLACE_SOURCE` to fall back to a Git marketplace (for example, `https://github.com/fuushyn/armour.git`).
 
 ### Manual install
 

@@ -1,11 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-MARKETPLACE_SOURCE="${ARMOUR_MARKETPLACE_SOURCE:-fuushyn/armour}"
+REPO="fuushyn/armour"
+MARKETPLACE_SOURCE="${ARMOUR_MARKETPLACE_SOURCE:-}"
 MARKETPLACE_NAME="armour-marketplace"
 PLUGIN_NAME="armour@${MARKETPLACE_NAME}"
 SCOPE="user"
 SETTINGS_FILE="${CLAUDE_SETTINGS_PATH:-$HOME/.claude/settings.json}"
+INSTALL_DIR="${ARMOUR_INSTALL_DIR:-$HOME/.armour/armour-plugin}"
 
 if ! command -v claude >/dev/null 2>&1; then
   echo "Claude Code CLI not found. Install Claude Code first."
@@ -14,6 +16,54 @@ fi
 
 marketplace_list() {
   claude plugin marketplace list 2>/dev/null
+}
+
+resolve_platform() {
+  local uname_s uname_m
+  uname_s="$(uname -s)"
+  uname_m="$(uname -m)"
+
+  case "${uname_s}" in
+    Darwin) goos="darwin" ;;
+    Linux) goos="linux" ;;
+    *) echo "Unsupported OS: ${uname_s}"; exit 1 ;;
+  esac
+
+  case "${uname_m}" in
+    x86_64|amd64) goarch="amd64" ;;
+    arm64|aarch64) goarch="arm64" ;;
+    *) echo "Unsupported architecture: ${uname_m}"; exit 1 ;;
+  esac
+}
+
+download_bundle() {
+  local asset_name download_url tmpfile
+  resolve_platform
+  asset_name="armour-plugin-${goos}-${goarch}.tar.gz"
+
+  if [ -n "${ARMOUR_RELEASE_URL:-}" ]; then
+    download_url="${ARMOUR_RELEASE_URL}"
+  elif [ -n "${ARMOUR_RELEASE_TAG:-}" ]; then
+    download_url="https://github.com/${REPO}/releases/download/${ARMOUR_RELEASE_TAG}/${asset_name}"
+  else
+    download_url="https://github.com/${REPO}/releases/latest/download/${asset_name}"
+  fi
+
+  tmpfile="$(mktemp -t armour-plugin.XXXXXX.tar.gz)"
+  echo "Downloading ${download_url}..."
+  curl -fsSL "${download_url}" -o "${tmpfile}"
+
+  if [ -d "${INSTALL_DIR}" ]; then
+    rm -rf "${INSTALL_DIR}"
+  fi
+  mkdir -p "${INSTALL_DIR}"
+  tar -xzf "${tmpfile}" -C "${INSTALL_DIR}"
+  rm -f "${tmpfile}"
+
+  if [ ! -f "${INSTALL_DIR}/.claude-plugin/marketplace.json" ]; then
+    echo "Marketplace manifest not found in ${INSTALL_DIR}."
+    exit 1
+  fi
 }
 
 enable_plugin() {
@@ -64,9 +114,17 @@ settings_path.write_text(json.dumps(data, indent=2, sort_keys=False) + "\n")
 PY
 }
 
-if ! marketplace_list | grep -q "${MARKETPLACE_NAME}"; then
-	echo "Adding marketplace ${MARKETPLACE_NAME} from ${MARKETPLACE_SOURCE}..."
-	claude plugin marketplace add "${MARKETPLACE_SOURCE}"
+if [ -n "${MARKETPLACE_SOURCE}" ]; then
+	if ! marketplace_list | grep -q "${MARKETPLACE_NAME}"; then
+		echo "Adding marketplace ${MARKETPLACE_NAME} from ${MARKETPLACE_SOURCE}..."
+		claude plugin marketplace add "${MARKETPLACE_SOURCE}"
+	fi
+else
+	download_bundle
+	if ! marketplace_list | grep -q "${MARKETPLACE_NAME}"; then
+		echo "Adding marketplace ${MARKETPLACE_NAME} from ${INSTALL_DIR}..."
+		claude plugin marketplace add "${INSTALL_DIR}"
+	fi
 fi
 
 echo "Updating marketplace ${MARKETPLACE_NAME}..."
