@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-MARKETPLACE_SOURCE="fuushyn/armour"
+MARKETPLACE_SOURCE="${ARMOUR_MARKETPLACE_SOURCE:-fuushyn/armour}"
 MARKETPLACE_NAME="armour-marketplace"
 PLUGIN_NAME="armour@${MARKETPLACE_NAME}"
 SCOPE="user"
@@ -13,6 +13,25 @@ fi
 
 marketplace_list() {
   claude plugin marketplace list 2>/dev/null
+}
+
+enable_plugin() {
+  set +e
+  output="$(claude plugin enable "${PLUGIN_NAME}" --scope "${SCOPE}" 2>&1)"
+  status=$?
+  set -e
+
+  if [ $status -eq 0 ]; then
+    return 0
+  fi
+
+  if echo "$output" | grep -qi "not found in disabled plugins"; then
+    echo "Plugin already enabled."
+    return 0
+  fi
+
+  echo "$output"
+  return $status
 }
 
 if ! marketplace_list | grep -q "${MARKETPLACE_NAME}"; then
@@ -27,6 +46,6 @@ echo "Installing ${PLUGIN_NAME}..."
 claude plugin install "${PLUGIN_NAME}" --scope "${SCOPE}"
 
 echo "Enabling ${PLUGIN_NAME}..."
-claude plugin enable "${PLUGIN_NAME}" --scope "${SCOPE}"
+enable_plugin
 
 echo "Armour installed and enabled. Restart Claude Code to load the plugin."

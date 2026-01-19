@@ -11,6 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/scripts/install
 ```
 
 This installs the marketplace, installs the plugin, and enables it. Restart Claude Code to load the plugin.
+Use `ARMOUR_MARKETPLACE_SOURCE` to override the marketplace source (for example, `https://github.com/fuushyn/armour.git`).
 
 ### Manual install
 
