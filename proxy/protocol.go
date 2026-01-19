@@ -124,11 +124,7 @@ func ValidateProtocolVersion(clientVersion, serverVersion string) error {
 		return fmt.Errorf("empty protocol version: client=%s, server=%s", clientVersion, serverVersion)
 	}
 
-	// Versions must match exactly for strict compliance
-	if clientVersion != serverVersion {
-		return fmt.Errorf("protocol version mismatch: client=%s, server=%s", clientVersion, serverVersion)
-	}
-
+	// Allow newer/older protocol versions to keep compatibility with clients that advance the version.
 	return nil
 }
 
