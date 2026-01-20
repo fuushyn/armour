@@ -103,7 +103,7 @@ if [ ! -f "$SERVERS_JSON" ]; then
   cat > "$SERVERS_JSON" << 'JSON_EOF'
 {
   "metadata": {
-    "version": "1.0.14",
+    "version": "1.0.15",
     "auto_generated": true,
     "description": "Armour MCP Proxy - Auto-discovered servers"
   },
