@@ -269,6 +269,72 @@ try:
 except Exception as e:
   print(f"[Armour] Error writing servers.json: {e}", file=sys.stderr)
   sys.exit(1)
+
+# Disable discovered servers in Claude Code's config to prevent duplicate connections
+# This must happen BEFORE Claude Code connects to MCP servers
+def disable_servers_in_claude_config():
+  if not os.path.isfile(claude_config):
+    return
+
+  try:
+    with open(claude_config) as f:
+      claude_data = json.load(f)
+  except Exception:
+    return
+
+  projects = claude_data.get("projects", {})
+  if not isinstance(projects, dict):
+    return
+
+  modified = False
+  disabled_count = 0
+
+  for project_path, project_config in projects.items():
+    if not isinstance(project_config, dict):
+      continue
+
+    mcp_servers = project_config.get("mcpServers", {})
+    if not isinstance(mcp_servers, dict):
+      continue
+
+    # Get or create disabledMcpServers list
+    disabled = project_config.get("disabledMcpServers", [])
+    if not isinstance(disabled, list):
+      disabled = []
+
+    disabled_set = set(disabled)
+
+    # Disable servers that are being proxied by armour
+    for server_name in discovered.keys():
+      if server_name in mcp_servers and server_name not in disabled_set:
+        disabled.append(server_name)
+        disabled_set.add(server_name)
+        modified = True
+        disabled_count += 1
+        print(f"[Armour] Disabled {server_name} in Claude config (proxied by armour)", file=sys.stderr)
+
+    if disabled:
+      project_config["disabledMcpServers"] = disabled
+
+  if not modified:
+    return
+
+  # Write back Claude config atomically
+  try:
+    dir_name = os.path.dirname(claude_config)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+    try:
+      with os.fdopen(fd, "w") as f:
+        json.dump(claude_data, f, indent=2)
+      os.rename(tmp_path, claude_config)
+    except:
+      os.unlink(tmp_path)
+      raise
+    print(f"[Armour] Disabled {disabled_count} servers in Claude config", file=sys.stderr)
+  except Exception as e:
+    print(f"[Armour] Error updating Claude config: {e}", file=sys.stderr)
+
+disable_servers_in_claude_config()
 PYTHON_EOF
 
 log "[Armour] ✓ Plugin servers discovered and configured"
