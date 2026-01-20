@@ -52,10 +52,50 @@ servers_json = os.path.expanduser("~/.armour/servers.json")
 # Discovered servers
 discovered = {}
 
+def register_server(server_name, server_config, source_label):
+  if not server_name or server_name == "armour" or server_name in discovered:
+    return
+  entry = {
+    "name": server_name,
+    "transport": server_config.get("type", "http"),
+  }
+  if "url" in server_config:
+    entry["url"] = server_config["url"]
+  if "command" in server_config:
+    entry["transport"] = "stdio"
+    entry["command"] = server_config["command"]
+  if "args" in server_config:
+    entry["args"] = server_config["args"]
+  if "headers" in server_config and server_config["headers"]:
+    entry["headers"] = server_config["headers"]
+  discovered[server_name] = entry
+  print(f"[Armour] Found: {server_name} ({source_label})", file=sys.stderr)
+
+def resolve_mcp_servers(mcp_value, base_dir, source_label):
+  if isinstance(mcp_value, dict):
+    for server_name, server_config in mcp_value.items():
+      if isinstance(server_config, dict):
+        register_server(server_name, server_config, source_label)
+  elif isinstance(mcp_value, list):
+    for server_config in mcp_value:
+      if isinstance(server_config, dict) and "name" in server_config:
+        register_server(server_config["name"], server_config, source_label)
+  elif isinstance(mcp_value, str):
+    mcp_path = (base_dir / mcp_value).resolve()
+    if mcp_path.is_file():
+      try:
+        with open(mcp_path) as f:
+          config = json.load(f)
+        resolve_mcp_servers(config.get("mcpServers", {}), base_dir, source_label)
+      except Exception:
+        pass
+
 # Scan plugins directory
 if os.path.isdir(plugins_dir):
   for root, dirs, files in os.walk(plugins_dir):
     if os.path.basename(root) == ".claude-plugin":
+      plugin_root = Path(root).parent
+      plugin_dir_name = plugin_root.name
       # Check marketplace.json
       if "marketplace.json" in files:
         try:
@@ -63,75 +103,28 @@ if os.path.isdir(plugins_dir):
             manifest = json.load(f)
             if "plugins" in manifest:
               for plugin in manifest["plugins"]:
-                if "mcpServers" in plugin:
-                  for server_name, server_config in plugin["mcpServers"].items():
-                    if server_name != "armour" and server_name not in discovered:
-                      discovered[server_name] = {
-                        "name": server_name,
-                        "transport": server_config.get("type", "http"),
-                      }
-                      if "url" in server_config:
-                        discovered[server_name]["url"] = server_config["url"]
-                      if "headers" in server_config and server_config["headers"]:
-                        discovered[server_name]["headers"] = server_config["headers"]
-                      print(f"[Armour] Found: {server_name} (marketplace)", file=sys.stderr)
-        except Exception as e:
+                plugin_name = plugin.get("name")
+                if plugin_name and plugin_name != plugin_dir_name:
+                  continue
+                mcp_value = plugin.get("mcpServers")
+                if mcp_value is None:
+                  continue
+                base_dir = plugin_root
+                source = plugin.get("source")
+                if isinstance(source, str) and source and not source.startswith("/") and "://" not in source:
+                  base_dir = (plugin_root / source).resolve()
+                resolve_mcp_servers(mcp_value, base_dir, "marketplace")
+        except Exception:
           pass
 
       # Check plugin.json
       if "plugin.json" in files:
         try:
-          plugin_root = Path(root).parent
           with open(os.path.join(root, "plugin.json")) as f:
             manifest = json.load(f)
             mcp_servers = manifest.get("mcpServers")
-            if isinstance(mcp_servers, dict):
-              for server_name, server_config in mcp_servers.items():
-                if server_name and server_name != "armour" and server_name not in discovered:
-                  discovered[server_name] = {
-                    "name": server_name,
-                    "transport": server_config.get("type", "http"),
-                  }
-                  if "url" in server_config:
-                    discovered[server_name]["url"] = server_config["url"]
-                  if "command" in server_config:
-                    discovered[server_name]["command"] = server_config["command"]
-                  if "args" in server_config:
-                    discovered[server_name]["args"] = server_config["args"]
-                  print(f"[Armour] Found: {server_name} (plugin.json)", file=sys.stderr)
-            elif isinstance(mcp_servers, list):
-              for server_config in mcp_servers:
-                server_name = server_config.get("name")
-                if server_name and server_name != "armour" and server_name not in discovered:
-                  discovered[server_name] = {
-                    "name": server_name,
-                    "transport": server_config.get("type", "http"),
-                  }
-                  if "url" in server_config:
-                    discovered[server_name]["url"] = server_config["url"]
-                  if "command" in server_config:
-                    discovered[server_name]["command"] = server_config["command"]
-                  if "args" in server_config:
-                    discovered[server_name]["args"] = server_config["args"]
-                  print(f"[Armour] Found: {server_name} (plugin.json)", file=sys.stderr)
-            elif isinstance(mcp_servers, str):
-              mcp_path = (plugin_root / mcp_servers).resolve()
-              if mcp_path.is_file():
-                with open(mcp_path) as f:
-                  config = json.load(f)
-                for server_name, server_config in config.get("mcpServers", {}).items():
-                  if server_name and server_name != "armour" and server_name not in discovered:
-                    discovered[server_name] = {
-                      "name": server_name,
-                      "transport": server_config.get("type", "http"),
-                    }
-                    if "url" in server_config:
-                      discovered[server_name]["url"] = server_config["url"]
-                    if "command" in server_config:
-                      discovered[server_name]["command"] = server_config["command"]
-                    if "args" in server_config:
-                      discovered[server_name]["args"] = server_config["args"]
-                    print(f"[Armour] Found: {server_name} (plugin.json mcpServers path)", file=sys.stderr)
+            if mcp_servers is not None:
+              resolve_mcp_servers(mcp_servers, plugin_root, "plugin.json")
         except Exception as e:
           pass
 

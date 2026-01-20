@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +60,7 @@ func NewDashboardServer(
 	mux.HandleFunc("/api/servers", ds.handleServersAPI)
 	mux.HandleFunc("/api/servers/", ds.handleServerDetailAPI)
 	mux.HandleFunc("/api/policy", ds.handlePolicyAPI)
+	mux.HandleFunc("/api/permissions", ds.handlePermissionsAPI)
 	mux.HandleFunc("/api/blocklist", ds.handleBlocklistAPI)
 	mux.HandleFunc("/api/stats", ds.handleStatsAPI)
 	mux.HandleFunc("/api/audit", ds.handleAuditAPI)
@@ -207,6 +210,76 @@ func (ds *Server) handlePolicyAPI(w http.ResponseWriter, r *http.Request) {
 			"mode":   req.Mode,
 		}
 
+		json.NewEncoder(w).Encode(response)
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handlePermissionsAPI manages native tool permission rules in Claude settings.json.
+func (ds *Server) handlePermissionsAPI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	settingsPath, err := claudeSettingsPath()
+	if err != nil {
+		ds.logger.Error("failed to resolve settings path: %v", err)
+		http.Error(w, "Settings path not available", http.StatusInternalServerError)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := loadSettings(settingsPath)
+		if err != nil {
+			ds.logger.Error("failed to load settings: %v", err)
+			http.Error(w, "Failed to load settings", http.StatusInternalServerError)
+			return
+		}
+
+		permissions := extractPermissions(settings)
+		response := map[string]interface{}{
+			"path":        settingsPath,
+			"permissions": permissions,
+		}
+		json.NewEncoder(w).Encode(response)
+
+	case http.MethodPut:
+		var req struct {
+			Rules []struct {
+				Tool string `json:"tool"`
+				Mode string `json:"mode"`
+			} `json:"rules"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		settings, err := loadSettings(settingsPath)
+		if err != nil {
+			ds.logger.Error("failed to load settings: %v", err)
+			http.Error(w, "Failed to load settings", http.StatusInternalServerError)
+			return
+		}
+
+		updated, err := applyPermissionRules(settings, req.Rules)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := saveSettings(settingsPath, updated); err != nil {
+			ds.logger.Error("failed to save settings: %v", err)
+			http.Error(w, "Failed to save settings", http.StatusInternalServerError)
+			return
+		}
+
+		response := map[string]interface{}{
+			"status": "success",
+			"path":   settingsPath,
+		}
 		json.NewEncoder(w).Encode(response)
 
 	default:
@@ -481,6 +554,169 @@ func normalizePermissions(action string, perms *server.Permissions) server.Permi
 		merged.Sampling = defaults.Sampling
 	}
 	return merged
+}
+
+func claudeSettingsPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".claude", "settings.json"), nil
+}
+
+func loadSettings(path string) (map[string]interface{}, error) {
+	settings := make(map[string]interface{})
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return settings, nil
+		}
+		return nil, err
+	}
+
+	if len(data) == 0 {
+		return settings, nil
+	}
+
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, err
+	}
+	return settings, nil
+}
+
+func saveSettings(path string, settings map[string]interface{}) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+func extractPermissions(settings map[string]interface{}) map[string][]string {
+	permissions := make(map[string][]string)
+	raw, ok := settings["permissions"].(map[string]interface{})
+	if !ok {
+		return permissions
+	}
+
+	permissions["allow"] = interfaceToStringSlice(raw["allow"])
+	permissions["ask"] = interfaceToStringSlice(raw["ask"])
+	permissions["deny"] = interfaceToStringSlice(raw["deny"])
+	return permissions
+}
+
+func applyPermissionRules(settings map[string]interface{}, rules []struct {
+	Tool string `json:"tool"`
+	Mode string `json:"mode"`
+}) (map[string]interface{}, error) {
+	if len(rules) == 0 {
+		return settings, nil
+	}
+
+	permissions, ok := settings["permissions"].(map[string]interface{})
+	if !ok {
+		permissions = make(map[string]interface{})
+	}
+
+	allow := interfaceToStringSlice(permissions["allow"])
+	ask := interfaceToStringSlice(permissions["ask"])
+	deny := interfaceToStringSlice(permissions["deny"])
+
+	for _, rule := range rules {
+		tool := strings.TrimSpace(rule.Tool)
+		if tool == "" {
+			continue
+		}
+
+		mode := strings.ToLower(strings.TrimSpace(rule.Mode))
+		if mode != "" && mode != "allow" && mode != "ask" && mode != "deny" && mode != "unset" {
+			return nil, fmt.Errorf("invalid mode for tool %s", tool)
+		}
+
+		allow = removeExactRule(allow, tool)
+		ask = removeExactRule(ask, tool)
+		deny = removeExactRule(deny, tool)
+
+		switch mode {
+		case "allow":
+			allow = appendUnique(allow, tool)
+		case "ask":
+			ask = appendUnique(ask, tool)
+		case "deny":
+			deny = appendUnique(deny, tool)
+		}
+	}
+
+	if len(allow) > 0 {
+		permissions["allow"] = allow
+	} else {
+		delete(permissions, "allow")
+	}
+	if len(ask) > 0 {
+		permissions["ask"] = ask
+	} else {
+		delete(permissions, "ask")
+	}
+	if len(deny) > 0 {
+		permissions["deny"] = deny
+	} else {
+		delete(permissions, "deny")
+	}
+
+	if len(permissions) > 0 {
+		settings["permissions"] = permissions
+	} else {
+		delete(settings, "permissions")
+	}
+
+	return settings, nil
+}
+
+func interfaceToStringSlice(raw interface{}) []string {
+	if raw == nil {
+		return nil
+	}
+
+	switch value := raw.(type) {
+	case []string:
+		return append([]string{}, value...)
+	case []interface{}:
+		result := make([]string, 0, len(value))
+		for _, item := range value {
+			if str, ok := item.(string); ok {
+				result = append(result, str)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func removeExactRule(rules []string, target string) []string {
+	if len(rules) == 0 {
+		return rules
+	}
+	filtered := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		if rule != target {
+			filtered = append(filtered, rule)
+		}
+	}
+	return filtered
+}
+
+func appendUnique(rules []string, value string) []string {
+	for _, rule := range rules {
+		if rule == value {
+			return rules
+		}
+	}
+	return append(rules, value)
 }
 
 // handleStatsAPI returns statistics and KPIs.

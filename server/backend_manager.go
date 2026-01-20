@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -371,11 +372,97 @@ func (bm *BackendManager) convertPluginMCPServerToEntry(serverName string, confi
 // parseMarketplacePluginMCPServers parses marketplace.json files for MCP servers.
 // Marketplace files are similar to plugin.json files but used for marketplace plugins.
 func (bm *BackendManager) parseMarketplacePluginMCPServers(marketplaceJSONPath string, seenServers map[string]bool) []proxy.ServerEntry {
-	// For now, this is a stub implementation. Marketplace.json files should be processed
-	// similarly to plugin.json files. This will be implemented in a future update.
-	// Return nil to avoid breaking existing functionality.
-	bm.logger.Debug("marketplace plugin discovery not yet implemented for: %s", marketplaceJSONPath)
-	return nil
+	data, err := os.ReadFile(marketplaceJSONPath)
+	if err != nil {
+		bm.logger.Debug("failed to read marketplace.json at %s: %v", marketplaceJSONPath, err)
+		return nil
+	}
+
+	var marketplaceManifest struct {
+		Plugins []struct {
+			Name       string      `json:"name"`
+			MCPServers interface{} `json:"mcpServers"`
+			Source     interface{} `json:"source"`
+		} `json:"plugins"`
+	}
+
+	if err := json.Unmarshal(data, &marketplaceManifest); err != nil {
+		bm.logger.Debug("failed to parse marketplace.json at %s: %v", marketplaceJSONPath, err)
+		return nil
+	}
+
+	pluginRoot := filepath.Dir(filepath.Dir(marketplaceJSONPath))
+	pluginDirName := filepath.Base(pluginRoot)
+	var servers []proxy.ServerEntry
+
+	for _, plugin := range marketplaceManifest.Plugins {
+		if plugin.Name != "" && plugin.Name != pluginDirName {
+			continue
+		}
+
+		baseDir := pluginRoot
+		if sourcePath, ok := plugin.Source.(string); ok {
+			if sourcePath != "" && !filepath.IsAbs(sourcePath) && !strings.Contains(sourcePath, "://") {
+				baseDir = filepath.Join(pluginRoot, sourcePath)
+			}
+		}
+
+		if plugin.MCPServers == nil {
+			continue
+		}
+
+		switch mcpServers := plugin.MCPServers.(type) {
+		case map[string]interface{}:
+			for serverName, serverRaw := range mcpServers {
+				serverConfig, ok := serverRaw.(map[string]interface{})
+				if !ok {
+					bm.logger.Debug("marketplace plugin %s: MCP server '%s' has invalid config shape", plugin.Name, serverName)
+					continue
+				}
+				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers)...)
+			}
+		case []interface{}:
+			for _, serverRaw := range mcpServers {
+				serverConfig, ok := serverRaw.(map[string]interface{})
+				if !ok {
+					bm.logger.Debug("marketplace plugin %s: MCP server entry has invalid config shape", plugin.Name)
+					continue
+				}
+				serverName, _ := serverConfig["name"].(string)
+				if serverName == "" {
+					bm.logger.Debug("marketplace plugin %s: MCP server missing 'name' field, skipping", plugin.Name)
+					continue
+				}
+				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers)...)
+			}
+		case string:
+			mcpPath := filepath.Join(baseDir, mcpServers)
+			data, err := os.ReadFile(mcpPath)
+			if err != nil {
+				bm.logger.Debug("failed to read marketplace mcpServers path %s: %v", mcpPath, err)
+				continue
+			}
+			var mcpConfig struct {
+				MCPServers map[string]interface{} `json:"mcpServers"`
+			}
+			if err := json.Unmarshal(data, &mcpConfig); err != nil {
+				bm.logger.Debug("failed to parse marketplace mcpServers file %s: %v", mcpPath, err)
+				continue
+			}
+			for serverName, serverRaw := range mcpConfig.MCPServers {
+				serverConfig, ok := serverRaw.(map[string]interface{})
+				if !ok {
+					bm.logger.Debug("marketplace plugin %s: MCP server '%s' has invalid config shape", plugin.Name, serverName)
+					continue
+				}
+				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers)...)
+			}
+		default:
+			bm.logger.Debug("marketplace plugin %s: unsupported mcpServers format", plugin.Name)
+		}
+	}
+
+	return servers
 }
 
 // discoverAndMergePluginServers discovers MCP servers from plugins and merges them with configured servers.

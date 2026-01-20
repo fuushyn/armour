@@ -634,6 +634,30 @@ func getUnifiedDashboardHTML() string {
 			background: rgba(12, 16, 26, 0.9);
 		}
 
+		.native-tools-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+			gap: 12px;
+			margin-top: 12px;
+		}
+
+		.native-tool-card {
+			background: rgba(10, 14, 22, 0.7);
+			border: 1px solid rgba(37, 48, 70, 0.6);
+			border-radius: 12px;
+			padding: 12px;
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.native-tool-card strong {
+			color: var(--text);
+			font-size: 13px;
+		}
+
 		.drawer-actions {
 			display: flex;
 			gap: 10px;
@@ -881,6 +905,14 @@ func getUnifiedDashboardHTML() string {
 				</div>
 				<p class="muted">Rule-based permissions override legacy policy selection. Use granular rules above for tool-level control.</p>
 			</div>
+			<div class="card">
+				<div class="section-header">
+					<h3 class="section-title">Native tool guard</h3>
+					<span class="muted">Backed by Claude Code permissions</span>
+				</div>
+				<div class="native-tools-grid" id="native-tools-grid"></div>
+				<button class="btn" id="save-native-tools">Save native tool rules</button>
+			</div>
 		</section>
 	</main>
 
@@ -975,9 +1007,19 @@ func getUnifiedDashboardHTML() string {
 			{ key: 'sampling', label: 'Sampling' }
 		];
 
+		const NATIVE_TOOLS = [
+			{ name: 'Bash', label: 'Bash' },
+			{ name: 'Read', label: 'Read' },
+			{ name: 'Write', label: 'Write' },
+			{ name: 'Edit', label: 'Edit' },
+			{ name: 'WebFetch', label: 'WebFetch' },
+			{ name: 'WebSearch', label: 'WebSearch' }
+		];
+
 		const state = {
 			rules: [],
-			servers: []
+			servers: [],
+			nativePermissions: { allow: [], ask: [], deny: [] }
 		};
 
 		let editingRuleId = null;
@@ -1065,6 +1107,57 @@ func getUnifiedDashboardHTML() string {
 					document.getElementById('rule-count').textContent = state.rules.length;
 					renderRules();
 				});
+		}
+
+		function loadNativePermissions() {
+			return fetchJSON('/api/permissions')
+				.then((data) => {
+					const perms = data.permissions || {};
+					state.nativePermissions = {
+						allow: perms.allow || [],
+						ask: perms.ask || [],
+						deny: perms.deny || []
+					};
+					renderNativeTools();
+				});
+		}
+
+		function toolMode(toolName) {
+			if (state.nativePermissions.deny.includes(toolName)) {
+				return 'deny';
+			}
+			if (state.nativePermissions.ask.includes(toolName)) {
+				return 'ask';
+			}
+			if (state.nativePermissions.allow.includes(toolName)) {
+				return 'allow';
+			}
+			return 'unset';
+		}
+
+		function renderNativeTools() {
+			const container = document.getElementById('native-tools-grid');
+			if (!container) {
+				return;
+			}
+			container.innerHTML = '';
+
+			NATIVE_TOOLS.forEach((tool) => {
+				const card = document.createElement('div');
+				card.className = 'native-tool-card';
+				card.innerHTML =
+					'<strong>' + escapeHTML(tool.label) + '</strong>' +
+					'<select class="input" data-native-tool="' + escapeHTML(tool.name) + '">' +
+						'<option value="unset">Unset</option>' +
+						'<option value="allow">Allow</option>' +
+						'<option value="ask">Ask</option>' +
+						'<option value="deny">Deny</option>' +
+					'</select>';
+				container.appendChild(card);
+
+				const select = card.querySelector('select');
+				select.value = toolMode(tool.name);
+			});
 		}
 
 		function renderRules() {
@@ -1343,7 +1436,7 @@ func getUnifiedDashboardHTML() string {
 		overlay.addEventListener('click', closeDrawer);
 
 		document.getElementById('refresh').addEventListener('click', () => {
-			Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy()])
+			Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadNativePermissions()])
 				.then(updateLastRefresh)
 				.catch((err) => showToast('Refresh failed: ' + err.message, 'error'));
 		});
@@ -1375,6 +1468,29 @@ func getUnifiedDashboardHTML() string {
 				});
 		});
 
+		document.getElementById('save-native-tools').addEventListener('click', () => {
+			const rules = [];
+			document.querySelectorAll('[data-native-tool]').forEach((select) => {
+				rules.push({
+					tool: select.getAttribute('data-native-tool'),
+					mode: select.value
+				});
+			});
+
+			fetchJSON('/api/permissions', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ rules: rules })
+			})
+				.then(() => {
+					showToast('Native tool rules updated', 'success');
+					return loadNativePermissions();
+				})
+				.catch((err) => {
+					showToast('Failed to update native tools: ' + err.message, 'error');
+				});
+		});
+
 		document.addEventListener('keydown', (event) => {
 			if (event.key === 'Escape') {
 				closeDrawer();
@@ -1383,7 +1499,7 @@ func getUnifiedDashboardHTML() string {
 
 		buildPermissionGrid();
 
-		Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy()])
+		Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadNativePermissions()])
 			.then(updateLastRefresh)
 			.catch((err) => showToast('Load failed: ' + err.message, 'error'));
 

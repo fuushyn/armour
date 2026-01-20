@@ -151,6 +151,7 @@ python3 << 'PYTHON_EOF'
 import json
 import sys
 import os
+from pathlib import Path
 
 servers_json = os.path.expanduser("~/.armour/servers.json")
 plugins_dir = os.path.expanduser("~/.claude/plugins")
@@ -165,11 +166,55 @@ try:
   # Track discovered servers
   discovered = {}
 
+  def register_server(server_name, server_config, source_label):
+    if not server_name or server_name in existing_servers or server_name in discovered or server_name == "armour":
+      return
+
+    entry = {
+      "name": server_name,
+      "transport": server_config.get("type", "http"),
+    }
+
+    if "command" in server_config:
+      entry["transport"] = "stdio"
+      entry["command"] = server_config["command"]
+      if "args" in server_config:
+        entry["args"] = server_config["args"]
+
+    if "url" in server_config:
+      entry["url"] = server_config["url"]
+
+    if "headers" in server_config and server_config["headers"]:
+      entry["headers"] = server_config["headers"]
+
+    discovered[server_name] = entry
+    print(f"[Armour] Discovered: {server_name} from {source_label}", file=sys.stderr)
+
+  def resolve_mcp_servers(mcp_value, base_dir, source_label):
+    if isinstance(mcp_value, dict):
+      for name, cfg in mcp_value.items():
+        if isinstance(cfg, dict):
+          register_server(name, cfg, source_label)
+    elif isinstance(mcp_value, list):
+      for cfg in mcp_value:
+        if isinstance(cfg, dict) and "name" in cfg:
+          register_server(cfg["name"], cfg, source_label)
+    elif isinstance(mcp_value, str):
+      mcp_path = (base_dir / mcp_value).resolve()
+      if mcp_path.is_file():
+        try:
+          with open(mcp_path) as f:
+            mcp_config = json.load(f)
+          resolve_mcp_servers(mcp_config.get("mcpServers", {}), base_dir, source_label)
+        except:
+          pass
+
   # Scan for MCP servers in plugins
   if os.path.isdir(plugins_dir):
     for root, dirs, files in os.walk(plugins_dir):
-      # Look for plugin.json and marketplace.json in .claude-plugin directories
       if os.path.basename(root) == ".claude-plugin":
+        plugin_root = Path(root).parent
+        plugin_dir_name = plugin_root.name
 
         if "marketplace.json" in files:
           with open(os.path.join(root, "marketplace.json")) as f:
@@ -177,21 +222,17 @@ try:
               manifest = json.load(f)
               if "plugins" in manifest:
                 for plugin in manifest["plugins"]:
-                  if "mcpServers" in plugin:
-                    for server_name, server_config in plugin["mcpServers"].items():
-                      if server_name not in existing_servers and server_name != "armour":
-                        discovered[server_name] = {
-                          "name": server_name,
-                          "transport": server_config.get("type", "http"),
-                          "url": server_config.get("url"),
-                          "headers": server_config.get("headers", {}),
-                        }
-                        if "url" not in server_config and "command" in server_config:
-                          discovered[server_name]["transport"] = "stdio"
-                          discovered[server_name]["command"] = server_config["command"]
-                          if "args" in server_config:
-                            discovered[server_name]["args"] = server_config["args"]
-                        print(f"[Armour] Discovered: {server_name} from marketplace", file=sys.stderr)
+                  plugin_name = plugin.get("name")
+                  if plugin_name and plugin_name != plugin_dir_name:
+                    continue
+                  mcp_value = plugin.get("mcpServers")
+                  if mcp_value is None:
+                    continue
+                  base_dir = plugin_root
+                  source = plugin.get("source")
+                  if isinstance(source, str) and source and not source.startswith("/") and "://" not in source:
+                    base_dir = (plugin_root / source).resolve()
+                  resolve_mcp_servers(mcp_value, base_dir, "marketplace")
             except:
               pass
 
@@ -199,21 +240,9 @@ try:
           with open(os.path.join(root, "plugin.json")) as f:
             try:
               manifest = json.load(f)
-              if "mcpServers" in manifest:
-                for server_config in manifest["mcpServers"]:
-                  server_name = server_config.get("name")
-                  if server_name and server_name not in existing_servers and server_name != "armour":
-                    discovered[server_name] = {
-                      "name": server_name,
-                      "transport": server_config.get("type", "http"),
-                    }
-                    if "url" in server_config:
-                      discovered[server_name]["url"] = server_config["url"]
-                    if "command" in server_config:
-                      discovered[server_name]["command"] = server_config["command"]
-                    if "args" in server_config:
-                      discovered[server_name]["args"] = server_config["args"]
-                    print(f"[Armour] Discovered: {server_name} from plugin", file=sys.stderr)
+              mcp_value = manifest.get("mcpServers")
+              if mcp_value is not None:
+                resolve_mcp_servers(mcp_value, plugin_root, "plugin")
             except:
               pass
 
