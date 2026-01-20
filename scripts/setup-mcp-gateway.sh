@@ -227,8 +227,18 @@ try:
         entry["url"] = remote_url
         return
 
+    # Check existing servers for same-host match before adding new entry
+    for name, entry in list(existing_servers.items()):
+      if entry.get("url") and same_host(entry["url"], remote_url):
+        transport = normalize_remote_transport(remote.get("type"), remote_url)
+        if transport:
+          entry["transport"] = transport
+        entry["url"] = remote_url
+        config["servers"][existing_index[name]] = entry
+        return
+
     name = plugin_name or "remote"
-    if name in discovered:
+    if name in discovered or name in existing_servers:
       return
     transport = normalize_remote_transport(remote.get("type"), remote_url) or "http"
     discovered[name] = {"name": name, "transport": transport, "url": remote_url}
@@ -313,9 +323,17 @@ try:
       else:
         config["servers"].append(server_config)
 
-    # Write back servers.json
-    with open(servers_json, "w") as f:
-      json.dump(config, f, indent=2)
+    # Write back servers.json atomically (temp file + rename)
+    import tempfile
+    dir_name = os.path.dirname(servers_json)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+    try:
+      with os.fdopen(fd, "w") as f:
+        json.dump(config, f, indent=2)
+      os.rename(tmp_path, servers_json)
+    except:
+      os.unlink(tmp_path)
+      raise
 
     print(f"[Armour] Added {len(discovered)} discovered servers to {servers_json}", file=sys.stderr)
 

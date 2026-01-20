@@ -556,6 +556,19 @@ func (bm *BackendManager) discoverAndMergePluginServers() {
 		existingIndex[srv.Name] = i
 	}
 
+	// Helper to find existing server by URL (same-host matching)
+	findExistingByURL := func(url string) (int, bool) {
+		if url == "" {
+			return -1, false
+		}
+		for i, srv := range bm.registry.Servers {
+			if srv.URL != "" && sameHost(srv.URL, url) {
+				return i, true
+			}
+		}
+		return -1, false
+	}
+
 	// Add discovered config servers that aren't already in registry
 	for _, srv := range configServers {
 		if !existingNames[srv.Name] {
@@ -568,6 +581,18 @@ func (bm *BackendManager) discoverAndMergePluginServers() {
 	// Add plugin servers that aren't already in registry
 	for _, srv := range pluginServers {
 		if !existingNames[srv.Name] {
+			// Check if there's an existing server with the same URL before adding
+			if idx, found := findExistingByURL(srv.URL); found {
+				existing := &bm.registry.Servers[idx]
+				if srv.Transport != "" {
+					existing.Transport = srv.Transport
+				}
+				if srv.URL != "" {
+					existing.URL = srv.URL
+				}
+				bm.logger.Debug("updated existing server %s (same host as %s)", existing.Name, srv.Name)
+				continue
+			}
 			bm.registry.Servers = append(bm.registry.Servers, srv)
 			existingNames[srv.Name] = true
 			existingIndex[srv.Name] = len(bm.registry.Servers) - 1

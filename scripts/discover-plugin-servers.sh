@@ -92,7 +92,7 @@ def same_host(left, right):
   except Exception:
     return False
 
-def apply_remote_override(remote, plugin_name):
+def apply_remote_override(remote, plugin_name, existing_servers, existing_index, config):
   remote_url = remote.get("url") if isinstance(remote, dict) else None
   if not remote_url:
     return
@@ -105,14 +105,24 @@ def apply_remote_override(remote, plugin_name):
       entry["url"] = remote_url
       return
 
+  # Check existing servers for same-host match before adding new entry
+  for name, entry in existing_servers.items():
+    if entry.get("url") and same_host(entry["url"], remote_url):
+      transport = normalize_remote_transport(remote.get("type"), remote_url)
+      if transport:
+        entry["transport"] = transport
+      entry["url"] = remote_url
+      config["servers"][existing_index[name]] = entry
+      return
+
   # Fall back: add a new entry if nothing matched
   name = plugin_name or "remote"
-  if name in discovered:
+  if name in discovered or name in existing_servers:
     return
   transport = normalize_remote_transport(remote.get("type"), remote_url) or "http"
   discovered[name] = {"name": name, "transport": transport, "url": remote_url}
 
-def apply_server_json(plugin_root):
+def apply_server_json(plugin_root, existing_servers, existing_index, config):
   server_json = plugin_root / "server.json"
   if not server_json.is_file():
     return
@@ -125,7 +135,7 @@ def apply_server_json(plugin_root):
     return
   for remote in remotes:
     if isinstance(remote, dict):
-      apply_remote_override(remote, plugin_root.name)
+      apply_remote_override(remote, plugin_root.name, existing_servers, existing_index, config)
 
 def resolve_mcp_servers(mcp_value, base_dir, source_label):
   if isinstance(mcp_value, dict):
@@ -145,6 +155,23 @@ def resolve_mcp_servers(mcp_value, base_dir, source_label):
         resolve_mcp_servers(config.get("mcpServers", {}), base_dir, source_label)
       except Exception:
         pass
+
+# Load servers.json first so we can check for existing servers
+try:
+  with open(servers_json) as f:
+    config = json.load(f)
+except Exception as e:
+  print(f"[Armour] Error reading servers.json: {e}", file=sys.stderr)
+  sys.exit(1)
+
+# Get existing server names, entries, and indices
+existing_servers = {}
+existing_index = {}
+for idx, server in enumerate(config.get("servers", [])):
+  name = server.get("name")
+  if name:
+    existing_servers[name] = server
+    existing_index[name] = idx
 
 # Scan plugins directory
 if os.path.isdir(plugins_dir):
@@ -169,7 +196,7 @@ if os.path.isdir(plugins_dir):
                 mcp_value = plugin.get("mcpServers")
                 if mcp_value is not None:
                   resolve_mcp_servers(mcp_value, base_dir, "marketplace")
-                apply_server_json(base_dir)
+                apply_server_json(base_dir, existing_servers, existing_index, config)
         except Exception:
           pass
 
@@ -181,24 +208,9 @@ if os.path.isdir(plugins_dir):
             mcp_servers = manifest.get("mcpServers")
             if mcp_servers is not None:
               resolve_mcp_servers(mcp_servers, plugin_root, "plugin.json")
-            apply_server_json(plugin_root)
+            apply_server_json(plugin_root, existing_servers, existing_index, config)
         except Exception as e:
           pass
-
-# Load servers.json
-try:
-  with open(servers_json) as f:
-    config = json.load(f)
-except Exception as e:
-  print(f"[Armour] Error reading servers.json: {e}", file=sys.stderr)
-  sys.exit(1)
-
-# Get existing server names and indices
-existing_index = {}
-for idx, server in enumerate(config.get("servers", [])):
-  name = server.get("name")
-  if name:
-    existing_index[name] = idx
 
 # Add discovered servers that aren't already there
 added_count = 0
@@ -209,10 +221,18 @@ for server_name, server_config in discovered.items():
     config["servers"].append(server_config)
     added_count += 1
 
-# Write back servers.json
+# Write back servers.json atomically (temp file + rename)
 try:
-  with open(servers_json, "w") as f:
-    json.dump(config, f, indent=2)
+  import tempfile
+  dir_name = os.path.dirname(servers_json)
+  fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+  try:
+    with os.fdopen(fd, "w") as f:
+      json.dump(config, f, indent=2)
+    os.rename(tmp_path, servers_json)
+  except:
+    os.unlink(tmp_path)
+    raise
   if added_count > 0:
     print(f"[Armour] Added {added_count} discovered servers to {servers_json}", file=sys.stderr)
 except Exception as e:
