@@ -323,9 +323,17 @@ try:
       else:
         config["servers"].append(server_config)
 
-    # Write back servers.json
-    with open(servers_json, "w") as f:
-      json.dump(config, f, indent=2)
+    # Write back servers.json atomically (temp file + rename)
+    import tempfile
+    dir_name = os.path.dirname(servers_json)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+    try:
+      with os.fdopen(fd, "w") as f:
+        json.dump(config, f, indent=2)
+      os.rename(tmp_path, servers_json)
+    except:
+      os.unlink(tmp_path)
+      raise
 
     print(f"[Armour] Added {len(discovered)} discovered servers to {servers_json}", file=sys.stderr)
 

@@ -221,10 +221,18 @@ for server_name, server_config in discovered.items():
     config["servers"].append(server_config)
     added_count += 1
 
-# Write back servers.json
+# Write back servers.json atomically (temp file + rename)
 try:
-  with open(servers_json, "w") as f:
-    json.dump(config, f, indent=2)
+  import tempfile
+  dir_name = os.path.dirname(servers_json)
+  fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+  try:
+    with os.fdopen(fd, "w") as f:
+      json.dump(config, f, indent=2)
+    os.rename(tmp_path, servers_json)
+  except:
+    os.unlink(tmp_path)
+    raise
   if added_count > 0:
     print(f"[Armour] Added {added_count} discovered servers to {servers_json}", file=sys.stderr)
 except Exception as e:
