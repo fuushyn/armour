@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -226,6 +227,7 @@ func (s *SSETransport) SendMessage(msg []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %v", err)
 	}
+	respBody = normalizeSSEBody(resp.Header.Get("Content-Type"), respBody)
 
 	s.mu.Lock()
 	s.lastResponse = respBody
@@ -437,6 +439,7 @@ func (h *HTTPTransport) SendMessage(msg []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %v", err)
 	}
+	respBody = normalizeSSEBody(resp.Header.Get("Content-Type"), respBody)
 
 	// Store response and mark as ready - regardless of content-type
 	// The response data will be parsed by the caller based on actual content
@@ -477,4 +480,48 @@ func (h *HTTPTransport) Close() error {
 
 func (h *HTTPTransport) SupportsServerToClient() bool {
 	return false
+}
+
+func normalizeSSEBody(contentType string, body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+
+	lowerType := strings.ToLower(contentType)
+	trimmed := bytes.TrimSpace(body)
+
+	if strings.Contains(lowerType, "text/event-stream") ||
+		bytes.HasPrefix(trimmed, []byte("event:")) ||
+		bytes.HasPrefix(trimmed, []byte("data:")) {
+		if parsed := extractSSEPayload(trimmed); len(parsed) > 0 {
+			return parsed
+		}
+	}
+
+	return body
+}
+
+func extractSSEPayload(body []byte) []byte {
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	var dataLines []string
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			if len(dataLines) > 0 {
+				break
+			}
+			continue
+		}
+
+		if strings.HasPrefix(line, "data:") {
+			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		}
+	}
+
+	if len(dataLines) == 0 {
+		return nil
+	}
+
+	return []byte(strings.Join(dataLines, "\n"))
 }
