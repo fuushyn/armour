@@ -1,14 +1,15 @@
 package dashboard
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -395,59 +396,120 @@ func (ds *Server) handlePermissionsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleBlocklistAPI manages blocklist rules (CRUD operations).
+// rulesServerURL is the URL for the rules server (port 8084)
+const rulesServerURL = "http://127.0.0.1:8084"
+
+// handleBlocklistAPI manages blocklist rules by proxying to the rules server (CRUD operations).
 func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Extract rule ID from query parameter if present
 	ruleIDStr := r.URL.Query().Get("id")
 
+	client := &http.Client{Timeout: 5 * time.Second}
+
 	switch r.Method {
 	case http.MethodGet:
+		// Proxy GET to rules server
+		url := rulesServerURL + "/api/rules"
 		if ruleIDStr != "" {
-			ruleID, err := strconv.ParseInt(ruleIDStr, 10, 64)
-			if err != nil {
-				http.Error(w, "Invalid rule ID", http.StatusBadRequest)
+			url = rulesServerURL + "/api/rules/" + ruleIDStr
+		}
+
+		resp, err := client.Get(url)
+		if err != nil {
+			ds.logger.Error("failed to query rules server: %v", err)
+			http.Error(w, "Rules server unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer resp.Body.Close()
+
+		if ruleIDStr != "" {
+			// Single rule - transform to dashboard format
+			var rule struct {
+				ID         int    `json:"id"`
+				Name       string `json:"name"`
+				Pattern    string `json:"pattern"`
+				Topics     string `json:"topics"`
+				Tools      string `json:"tools"`
+				Scope      string `json:"scope"`
+				Action     string `json:"action"`
+				IsRegex    bool   `json:"is_regex"`
+				IsSemantic bool   `json:"is_semantic"`
+				Enabled    bool   `json:"enabled"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
+				http.Error(w, "Failed to parse rule", http.StatusInternalServerError)
 				return
 			}
 
-			rule, err := server.GetBlocklistRuleByID(ds.db, ruleID)
-			if err != nil {
-				ds.logger.Error("failed to get blocklist rule: %v", err)
-				http.Error(w, "Rule not found", http.StatusNotFound)
-				return
+			dashboardRule := map[string]interface{}{
+				"id":          rule.ID,
+				"pattern":     rule.Pattern,
+				"description": rule.Name,
+				"action":      rule.Action,
+				"is_regex":    rule.IsRegex,
+				"is_semantic": rule.IsSemantic,
+				"tools":       rule.Tools,
+				"enabled":     rule.Enabled,
 			}
-
-			json.NewEncoder(w).Encode(rule)
+			json.NewEncoder(w).Encode(dashboardRule)
 			return
 		}
 
-		// List all rules
-		rules, err := server.GetAllBlocklistRules(ds.db)
-		if err != nil {
-			ds.logger.Error("failed to get blocklist rules: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		// List all rules - transform to dashboard format
+		var rulesResp struct {
+			Rules []struct {
+				ID         int    `json:"id"`
+				Name       string `json:"name"`
+				Pattern    string `json:"pattern"`
+				Topics     string `json:"topics"`
+				Tools      string `json:"tools"`
+				Scope      string `json:"scope"`
+				Action     string `json:"action"`
+				IsRegex    bool   `json:"is_regex"`
+				IsSemantic bool   `json:"is_semantic"`
+				Enabled    bool   `json:"enabled"`
+			} `json:"rules"`
+			Count int `json:"count"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&rulesResp); err != nil {
+			http.Error(w, "Failed to parse rules", http.StatusInternalServerError)
 			return
+		}
+		rules := rulesResp.Rules
+
+		var dashboardRules []map[string]interface{}
+		for _, rule := range rules {
+			dashboardRules = append(dashboardRules, map[string]interface{}{
+				"id":          rule.ID,
+				"pattern":     rule.Pattern,
+				"description": rule.Name,
+				"action":      rule.Action,
+				"is_regex":    rule.IsRegex,
+				"is_semantic": rule.IsSemantic,
+				"tools":       rule.Tools,
+				"enabled":     rule.Enabled,
+			})
 		}
 
 		response := map[string]interface{}{
-			"count": len(rules),
-			"rules": rules,
+			"count": len(dashboardRules),
+			"rules": dashboardRules,
 		}
 
 		json.NewEncoder(w).Encode(response)
 
 	case http.MethodPost:
-		// Create new rule
+		// Create new rule - proxy to rules server
 		var req struct {
-			Pattern     string              `json:"pattern"`
-			Description string              `json:"description,omitempty"`
-			Action      string              `json:"action"`
-			IsRegex     bool                `json:"is_regex"`
-			IsSemantic  bool                `json:"is_semantic"`
-			Tools       string              `json:"tools"`
-			Enabled     *bool               `json:"enabled,omitempty"`
-			Permissions *server.Permissions `json:"permissions,omitempty"`
+			Pattern     string `json:"pattern"`
+			Description string `json:"description,omitempty"`
+			Action      string `json:"action"`
+			IsRegex     bool   `json:"is_regex"`
+			IsSemantic  bool   `json:"is_semantic"`
+			Tools       string `json:"tools"`
+			Enabled     *bool  `json:"enabled,omitempty"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -465,6 +527,104 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+
+		// Transform to rules server format
+		name := req.Description
+		if name == "" {
+			name = pattern
+		}
+
+		rulesReq := map[string]interface{}{
+			"name":        name,
+			"pattern":     pattern,
+			"tools":       req.Tools,
+			"scope":       "all",
+			"action":      action,
+			"is_regex":    req.IsRegex,
+			"is_semantic": req.IsSemantic,
+		}
+
+		body, _ := json.Marshal(rulesReq)
+		resp, err := client.Post(rulesServerURL+"/api/rules", "application/json", bytes.NewReader(body))
+		if err != nil {
+			ds.logger.Error("failed to create rule on rules server: %v", err)
+			http.Error(w, "Rules server unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			ds.logger.Error("rules server returned error: %s", string(bodyBytes))
+			http.Error(w, "Failed to create rule", resp.StatusCode)
+			return
+		}
+
+		// Parse response and transform to dashboard format
+		var created struct {
+			ID         int    `json:"id"`
+			Name       string `json:"name"`
+			Pattern    string `json:"pattern"`
+			Tools      string `json:"tools"`
+			Action     string `json:"action"`
+			IsRegex    bool   `json:"is_regex"`
+			IsSemantic bool   `json:"is_semantic"`
+			Enabled    bool   `json:"enabled"`
+		}
+		json.NewDecoder(resp.Body).Decode(&created)
+
+		dashboardRule := map[string]interface{}{
+			"id":          created.ID,
+			"pattern":     created.Pattern,
+			"description": created.Name,
+			"action":      created.Action,
+			"is_regex":    created.IsRegex,
+			"is_semantic": created.IsSemantic,
+			"tools":       created.Tools,
+			"enabled":     created.Enabled,
+		}
+
+		json.NewEncoder(w).Encode(dashboardRule)
+
+	case http.MethodPut:
+		// Update existing rule - proxy to rules server
+		if ruleIDStr == "" {
+			http.Error(w, "Rule ID required", http.StatusBadRequest)
+			return
+		}
+
+		var req struct {
+			Pattern     string `json:"pattern"`
+			Description string `json:"description,omitempty"`
+			Action      string `json:"action"`
+			IsRegex     bool   `json:"is_regex"`
+			IsSemantic  bool   `json:"is_semantic"`
+			Tools       string `json:"tools"`
+			Enabled     *bool  `json:"enabled,omitempty"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		pattern := strings.TrimSpace(req.Pattern)
+		if pattern == "" {
+			http.Error(w, "Pattern required", http.StatusBadRequest)
+			return
+		}
+
+		action, err := normalizeBlocklistAction(req.Action)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Transform to rules server format
+		name := req.Description
+		if name == "" {
+			name = pattern
 		}
 
 		enabled := true
@@ -472,141 +632,83 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 			enabled = *req.Enabled
 		}
 
-		rule := &server.BlocklistRule{
-			Pattern:     pattern,
-			Description: req.Description,
-			Action:      action,
-			IsRegex:     req.IsRegex,
-			IsSemantic:  req.IsSemantic,
-			Tools:       req.Tools,
-			Permissions: normalizePermissions(action, req.Permissions),
-			Enabled:     enabled,
+		rulesReq := map[string]interface{}{
+			"name":        name,
+			"pattern":     pattern,
+			"tools":       req.Tools,
+			"scope":       "all",
+			"action":      action,
+			"is_regex":    req.IsRegex,
+			"is_semantic": req.IsSemantic,
+			"enabled":     enabled,
 		}
 
-		if err := server.CreateBlocklistRule(ds.db, rule); err != nil {
-			ds.logger.Error("failed to create blocklist rule: %v", err)
-			http.Error(w, "Failed to create rule", http.StatusInternalServerError)
-			return
-		}
+		body, _ := json.Marshal(rulesReq)
+		httpReq, _ := http.NewRequest(http.MethodPut, rulesServerURL+"/api/rules/"+ruleIDStr, bytes.NewReader(body))
+		httpReq.Header.Set("Content-Type", "application/json")
 
-		// Refresh cache
-		if ds.blocklist != nil {
-			if err := ds.blocklist.RefreshRulesCache(); err != nil {
-				ds.logger.Warn("failed to refresh cache: %v", err)
-			}
-		}
-
-		json.NewEncoder(w).Encode(rule)
-
-	case http.MethodPut:
-		// Update existing rule
-		if ruleIDStr == "" {
-			http.Error(w, "Rule ID required", http.StatusBadRequest)
-			return
-		}
-
-		ruleID, err := strconv.ParseInt(ruleIDStr, 10, 64)
+		resp, err := client.Do(httpReq)
 		if err != nil {
-			http.Error(w, "Invalid rule ID", http.StatusBadRequest)
+			ds.logger.Error("failed to update rule on rules server: %v", err)
+			http.Error(w, "Rules server unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			ds.logger.Error("rules server returned error: %s", string(bodyBytes))
+			http.Error(w, "Failed to update rule", resp.StatusCode)
 			return
 		}
 
-		var req struct {
-			Pattern     string              `json:"pattern"`
-			Description string              `json:"description,omitempty"`
-			Action      string              `json:"action"`
-			IsRegex     bool                `json:"is_regex"`
-			IsSemantic  bool                `json:"is_semantic"`
-			Tools       string              `json:"tools"`
-			Enabled     *bool               `json:"enabled,omitempty"`
-			Permissions *server.Permissions `json:"permissions,omitempty"`
+		// Parse response and transform to dashboard format
+		var updated struct {
+			ID         int    `json:"id"`
+			Name       string `json:"name"`
+			Pattern    string `json:"pattern"`
+			Tools      string `json:"tools"`
+			Action     string `json:"action"`
+			IsRegex    bool   `json:"is_regex"`
+			IsSemantic bool   `json:"is_semantic"`
+			Enabled    bool   `json:"enabled"`
+		}
+		json.NewDecoder(resp.Body).Decode(&updated)
+
+		dashboardRule := map[string]interface{}{
+			"id":          updated.ID,
+			"pattern":     updated.Pattern,
+			"description": updated.Name,
+			"action":      updated.Action,
+			"is_regex":    updated.IsRegex,
+			"is_semantic": updated.IsSemantic,
+			"tools":       updated.Tools,
+			"enabled":     updated.Enabled,
 		}
 
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request", http.StatusBadRequest)
-			return
-		}
-
-		pattern := strings.TrimSpace(req.Pattern)
-		if pattern == "" {
-			http.Error(w, "Pattern required", http.StatusBadRequest)
-			return
-		}
-
-		action, err := normalizeBlocklistAction(req.Action)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		existingRule, err := server.GetBlocklistRuleByID(ds.db, ruleID)
-		if err != nil {
-			ds.logger.Error("failed to get blocklist rule: %v", err)
-			http.Error(w, "Rule not found", http.StatusNotFound)
-			return
-		}
-
-		enabled := existingRule.Enabled
-		if req.Enabled != nil {
-			enabled = *req.Enabled
-		}
-
-		permissions := existingRule.Permissions
-		if req.Permissions != nil {
-			permissions = normalizePermissions(action, req.Permissions)
-		}
-
-		rule := &server.BlocklistRule{
-			ID:          ruleID,
-			Pattern:     pattern,
-			Description: req.Description,
-			Action:      action,
-			IsRegex:     req.IsRegex,
-			IsSemantic:  req.IsSemantic,
-			Tools:       req.Tools,
-			Permissions: permissions,
-			Enabled:     enabled,
-		}
-
-		if err := server.UpdateBlocklistRule(ds.db, rule); err != nil {
-			ds.logger.Error("failed to update blocklist rule: %v", err)
-			http.Error(w, "Failed to update rule", http.StatusInternalServerError)
-			return
-		}
-
-		// Refresh cache
-		if ds.blocklist != nil {
-			if err := ds.blocklist.RefreshRulesCache(); err != nil {
-				ds.logger.Warn("failed to refresh cache: %v", err)
-			}
-		}
-
-		json.NewEncoder(w).Encode(rule)
+		json.NewEncoder(w).Encode(dashboardRule)
 
 	case http.MethodDelete:
-		// Delete rule
+		// Delete rule - proxy to rules server
 		if ruleIDStr == "" {
 			http.Error(w, "Rule ID required", http.StatusBadRequest)
 			return
 		}
 
-		ruleID, err := strconv.ParseInt(ruleIDStr, 10, 64)
+		httpReq, _ := http.NewRequest(http.MethodDelete, rulesServerURL+"/api/rules/"+ruleIDStr, nil)
+		resp, err := client.Do(httpReq)
 		if err != nil {
-			http.Error(w, "Invalid rule ID", http.StatusBadRequest)
+			ds.logger.Error("failed to delete rule on rules server: %v", err)
+			http.Error(w, "Rules server unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		defer resp.Body.Close()
 
-		if err := server.DeleteBlocklistRule(ds.db, ruleID); err != nil {
-			ds.logger.Error("failed to delete blocklist rule: %v", err)
-			http.Error(w, "Failed to delete rule", http.StatusInternalServerError)
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			ds.logger.Error("rules server returned error: %s", string(bodyBytes))
+			http.Error(w, "Failed to delete rule", resp.StatusCode)
 			return
-		}
-
-		// Refresh cache
-		if ds.blocklist != nil {
-			if err := ds.blocklist.RefreshRulesCache(); err != nil {
-				ds.logger.Warn("failed to refresh cache: %v", err)
-			}
 		}
 
 		response := map[string]string{
