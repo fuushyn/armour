@@ -35,6 +35,8 @@ func (f *Forwarder) ForwardPOST(upstreamURL, sessionID string, reqBody io.Reader
 	req.Header.Set(HeaderProtocolVersion, MCPProtocolVersion)
 	req.Header.Set(HeaderSessionID, sessionID)
 	req.Header.Set("Content-Type", "application/json")
+	// Some MCP servers require both JSON and SSE accept headers per spec
+	req.Header.Set("Accept", "application/json, text/event-stream")
 
 	resp, err := f.client.Do(req)
 	if err != nil {
@@ -52,7 +54,8 @@ func (f *Forwarder) ForwardGET(upstreamURL, sessionID string, lastEventID string
 
 	req.Header.Set(HeaderProtocolVersion, MCPProtocolVersion)
 	req.Header.Set(HeaderSessionID, sessionID)
-	req.Header.Set("Accept", "text/event-stream")
+	// Accept both JSON and SSE to satisfy servers that require dual accept headers
+	req.Header.Set("Accept", "application/json, text/event-stream")
 	if lastEventID != "" {
 		req.Header.Set("Last-Event-ID", lastEventID)
 	}
