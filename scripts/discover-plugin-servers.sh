@@ -28,7 +28,7 @@ if [ ! -f "$SERVERS_JSON" ]; then
   cat > "$SERVERS_JSON" << 'JSON_EOF'
 {
   "metadata": {
-    "version": "1.0.0",
+    "version": "1.0.13",
     "description": "Armour MCP Proxy - Backend servers configuration"
   },
   "policy": {
@@ -49,6 +49,8 @@ from urllib.parse import urlparse
 
 plugins_dir = os.path.expanduser("~/.claude/plugins")
 servers_json = os.path.expanduser("~/.armour/servers.json")
+claude_config = os.path.expanduser("~/.claude.json")
+project_hint = os.environ.get("CLAUDE_PROJECT_ROOT") or os.environ.get("PWD") or os.getcwd()
 
 # Discovered servers
 discovered = {}
@@ -156,6 +158,32 @@ def resolve_mcp_servers(mcp_value, base_dir, source_label):
       except Exception:
         pass
 
+def add_project_mcp_servers():
+  if not os.path.isfile(claude_config):
+    return
+  try:
+    with open(claude_config) as f:
+      data = json.load(f)
+  except Exception:
+    return
+
+  projects = data.get("projects", {})
+  project_entry = None
+  if project_hint and project_hint in projects:
+    project_entry = projects.get(project_hint)
+  elif len(projects) == 1:
+    # Safe fallback: use the sole project if only one exists
+    project_entry = next(iter(projects.values()))
+
+  if not isinstance(project_entry, dict):
+    return
+
+  mcp_servers = project_entry.get("mcpServers", {})
+  if isinstance(mcp_servers, dict):
+    for server_name, server_config in mcp_servers.items():
+      if isinstance(server_config, dict):
+        register_server(server_name, server_config, "claude.json project")
+
 # Load servers.json first so we can check for existing servers
 try:
   with open(servers_json) as f:
@@ -172,6 +200,9 @@ for idx, server in enumerate(config.get("servers", [])):
   if name:
     existing_servers[name] = server
     existing_index[name] = idx
+
+# Discover project-level MCP servers from ~/.claude.json
+add_project_mcp_servers()
 
 # Scan plugins directory
 if os.path.isdir(plugins_dir):

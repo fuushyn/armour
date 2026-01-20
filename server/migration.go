@@ -103,7 +103,7 @@ func (cm *ConfigMigrator) MigrateWithServers(servers []DetectedServer, policyMod
 		},
 		"metadata": map[string]interface{}{
 			"migrated_at": time.Now().Format(time.RFC3339),
-			"version":     "1.0.0",
+			"version":     "1.0.13",
 		},
 	}
 

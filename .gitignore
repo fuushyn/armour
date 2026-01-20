@@ -50,3 +50,8 @@ IMPLEMENTATION_SUMMARY.md
 PLUGIN_INSTALLATION.md
 QUICKSTART.md
 understanding.md
+
+# Ignore all markdown except README
+*.md
+!README.md
+!README.MD

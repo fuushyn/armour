@@ -447,7 +447,7 @@ dashboard/
 
 ## Version Information
 
-- **Implementation Version:** 1.0.0
+- **Implementation Version:** 1.0.13
 - **Target Armour Version:** 1.1.0+
 - **Deprecated Component:** PolicyManager (removal planned for 2.0.0)
 - **Breaking Changes:** Yes (policy mode selection removed)
