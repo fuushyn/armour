@@ -298,7 +298,7 @@ func initDB(db *sql.DB) error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		pattern TEXT NOT NULL,
 		description TEXT,
-		action TEXT CHECK(action IN ('block', 'allow')) DEFAULT 'block',
+		action TEXT CHECK(action IN ('block', 'allow', 'ask')) DEFAULT 'block',
 		is_regex INTEGER DEFAULT 0,
 		is_semantic INTEGER DEFAULT 1,
 		tools TEXT DEFAULT '',
