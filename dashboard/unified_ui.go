@@ -891,51 +891,9 @@ func getUnifiedDashboardHTML() string {
 						<div class="rule-desc" id="server-config-path">Detecting registry...</div>
 					</div>
 					<div class="rule-controls">
-						<button class="btn btn-primary" type="button" id="server-toggle">Register server</button>
 						<button class="btn btn-ghost" type="button" id="server-refresh">Reload</button>
 					</div>
 				</div>
-				<form class="server-form hidden" id="server-form" autocomplete="off">
-					<div class="server-form-grid">
-						<div class="form-row">
-							<label for="server-name">Name</label>
-							<input class="input" id="server-name" name="server-name" placeholder="docs" required />
-						</div>
-						<div class="form-row">
-							<label for="server-transport">Transport</label>
-							<select class="input" id="server-transport" name="server-transport">
-								<option value="http">HTTP</option>
-								<option value="sse">SSE</option>
-								<option value="stdio">Stdio</option>
-							</select>
-						</div>
-						<div class="form-row" id="server-url-row">
-							<label for="server-url">Endpoint URL</label>
-							<input class="input" id="server-url" name="server-url" type="url" placeholder="http://127.0.0.1:8080/mcp" />
-						</div>
-						<div class="form-row hidden" id="server-command-row">
-							<label for="server-command">Command (stdio)</label>
-							<input class="input" id="server-command" name="server-command" placeholder="node server.js" />
-						</div>
-						<div class="form-row hidden" id="server-args-row">
-							<label for="server-args">Args (optional)</label>
-							<input class="input" id="server-args" name="server-args" placeholder="--flag value" />
-						</div>
-						<div class="form-row hidden" id="server-env-row">
-							<label for="server-env">Env (KEY=VALUE, optional)</label>
-							<textarea class="input textarea" id="server-env" name="server-env" placeholder="API_KEY=...&#10;DEBUG=1"></textarea>
-						</div>
-						<div class="form-row" id="server-headers-row">
-							<label for="server-headers">Headers (JSON, optional)</label>
-							<textarea class="input textarea" id="server-headers" name="server-headers" placeholder='{\"Authorization\":\"Bearer ...\"}'></textarea>
-						</div>
-					</div>
-					<div class="server-form-actions">
-						<button class="btn btn-primary" type="submit">Save server</button>
-						<button class="btn btn-ghost" type="button" id="server-cancel">Cancel</button>
-						<span class="muted" id="server-form-hint">HTTP/SSE use URLs; stdio uses local command + args.</span>
-					</div>
-				</form>
 				<div class="server-list" id="server-list">
 					<div class="empty-state">Loading servers...</div>
 				</div>
@@ -950,6 +908,7 @@ func getUnifiedDashboardHTML() string {
 					<select class="input" id="rule-filter">
 						<option value="all">All rules</option>
 						<option value="block">Block only</option>
+						<option value="ask">Ask only</option>
 						<option value="allow">Allow only</option>
 						<option value="enabled">Enabled only</option>
 						<option value="disabled">Disabled only</option>
@@ -1016,47 +975,27 @@ func getUnifiedDashboardHTML() string {
 		</div>
 		<form id="rule-form">
 			<div class="form-row">
-				<label for="rule-pattern">Pattern or topic</label>
-				<input class="input" id="rule-pattern" type="text" required />
+				<label for="rule-tool">Tool</label>
+				<select class="input" id="rule-tool" required>
+					<option value="*">All tools</option>
+				</select>
 			</div>
 			<div class="form-row">
-				<label for="rule-description">Description</label>
-				<textarea class="input textarea" id="rule-description"></textarea>
-			</div>
-			<div class="form-grid">
-				<div class="form-row">
-					<label for="rule-action">Action</label>
-					<select class="input" id="rule-action" required>
-						<option value="block">Block</option>
-						<option value="allow">Allow</option>
-					</select>
-				</div>
-				<div class="form-row">
-					<label for="rule-tools">Tool scope</label>
-					<input class="input" id="rule-tools" type="text" placeholder="* or tool1, tool2" />
-				</div>
-			</div>
-			<div class="form-grid">
-				<label class="switch">
-					<input type="checkbox" id="rule-enabled" checked />
-					<span>Enabled</span>
-				</label>
-				<label class="switch">
-					<input type="checkbox" id="rule-regex" />
-					<span>Regex match</span>
-				</label>
-				<label class="switch">
-					<input type="checkbox" id="rule-semantic" checked />
-					<span>Semantic match</span>
-				</label>
+				<label for="rule-keywords">Keywords to block</label>
+				<input class="input" id="rule-keywords" type="text" placeholder="e.g. password, secret, DROP TABLE" required />
+				<span class="muted">Comma-separated keywords that trigger this rule</span>
 			</div>
 			<div class="form-row">
-				<label>Granular permissions</label>
-				<div class="permission-grid" id="permission-grid"></div>
+				<label for="rule-action">Action</label>
+				<select class="input" id="rule-action" required>
+					<option value="block">Block</option>
+					<option value="ask">Ask for confirmation</option>
+					<option value="allow">Allow</option>
+				</select>
 			</div>
 			<div class="drawer-actions">
 				<button class="btn btn-primary" type="submit">Save rule</button>
-				<button class="btn" type="button" id="reset-permissions">Reset permissions</button>
+				<button class="btn btn-ghost" type="button" id="cancel-rule">Cancel</button>
 			</div>
 		</form>
 	</aside>
@@ -1084,19 +1023,18 @@ func getUnifiedDashboardHTML() string {
 				prompts_get: 'allow',
 				prompts_list: 'allow',
 				sampling: 'allow'
+			},
+			ask: {
+				tools_call: 'deny',
+				tools_list: 'allow',
+				resources_read: 'deny',
+				resources_list: 'allow',
+				resources_subscribe: 'deny',
+				prompts_get: 'deny',
+				prompts_list: 'allow',
+				sampling: 'deny'
 			}
 		};
-
-		const PERMISSION_LABELS = [
-			{ key: 'tools_call', label: 'Tools / call' },
-			{ key: 'tools_list', label: 'Tools / list' },
-			{ key: 'resources_read', label: 'Resources / read' },
-			{ key: 'resources_list', label: 'Resources / list' },
-			{ key: 'resources_subscribe', label: 'Resources / subscribe' },
-			{ key: 'prompts_get', label: 'Prompts / get' },
-			{ key: 'prompts_list', label: 'Prompts / list' },
-			{ key: 'sampling', label: 'Sampling' }
-		];
 
 		const NATIVE_TOOLS = [
 			{ name: 'Bash', label: 'Bash' },
@@ -1110,6 +1048,7 @@ func getUnifiedDashboardHTML() string {
 		const state = {
 			rules: [],
 			servers: [],
+			tools: [],
 			registryPath: '',
 			nativePermissions: { allow: [], ask: [], deny: [] }
 		};
@@ -1180,7 +1119,7 @@ func getUnifiedDashboardHTML() string {
 			container.innerHTML = '';
 
 			if (state.servers.length === 0) {
-				container.innerHTML = '<div class="empty-state">No servers configured yet. Use "Register server" to add one.</div>';
+				container.innerHTML = '<div class="empty-state">No servers configured.</div>';
 				return;
 			}
 
@@ -1201,144 +1140,6 @@ func getUnifiedDashboardHTML() string {
 			container.appendChild(item);
 		});
 	}
-
-		function updateServerTransportFields() {
-			const transport = document.getElementById('server-transport').value;
-			const isStdio = transport === 'stdio';
-			document.getElementById('server-url-row').classList.toggle('hidden', isStdio);
-			document.getElementById('server-headers-row').classList.toggle('hidden', isStdio);
-			document.getElementById('server-command-row').classList.toggle('hidden', !isStdio);
-			document.getElementById('server-args-row').classList.toggle('hidden', !isStdio);
-			document.getElementById('server-env-row').classList.toggle('hidden', !isStdio);
-		}
-
-		function resetServerForm() {
-			const form = document.getElementById('server-form');
-			if (!form) {
-				return;
-			}
-			form.reset();
-			document.getElementById('server-transport').value = 'http';
-			document.getElementById('server-headers').value = '';
-			document.getElementById('server-env').value = '';
-			document.getElementById('server-args').value = '';
-			document.getElementById('server-command').value = '';
-			document.getElementById('server-url').value = '';
-			updateServerTransportFields();
-		}
-
-		function toggleServerForm(forceOpen) {
-			const form = document.getElementById('server-form');
-			const toggle = document.getElementById('server-toggle');
-			if (!form || !toggle) {
-				return;
-			}
-			const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : form.classList.contains('hidden');
-			form.classList.toggle('hidden', !shouldOpen);
-			toggle.textContent = shouldOpen ? 'Close form' : 'Register server';
-		}
-
-		function parseServerArgs(raw) {
-			if (!raw || !raw.trim()) {
-				return [];
-			}
-			return raw.trim().split(/\s+/);
-		}
-
-		function parseEnvVars(raw) {
-			if (!raw || !raw.trim()) {
-				return undefined;
-			}
-			const env = {};
-			raw.split(/\n+/).forEach((line) => {
-				if (!line.trim()) {
-					return;
-				}
-				const [key, ...rest] = line.split('=');
-				if (!key || rest.length === 0) {
-					throw new Error('Env must be KEY=VALUE per line');
-				}
-				env[key.trim()] = rest.join('=').trim();
-			});
-			return Object.keys(env).length ? env : undefined;
-		}
-
-		function parseHeaderJSON(raw) {
-			if (!raw || !raw.trim()) {
-				return undefined;
-			}
-			return JSON.parse(raw);
-		}
-
-		function submitServerForm(event) {
-			event.preventDefault();
-			const name = document.getElementById('server-name').value.trim();
-			const transport = document.getElementById('server-transport').value;
-			const url = document.getElementById('server-url').value.trim();
-			const command = document.getElementById('server-command').value.trim();
-
-			if (!name) {
-				showToast('Name is required', 'error');
-				return;
-			}
-
-			const payload = { name: name, transport: transport };
-
-			if (transport === 'stdio') {
-				if (!command) {
-					showToast('Command required for stdio servers', 'error');
-					return;
-				}
-				payload.command = command;
-				const args = parseServerArgs(document.getElementById('server-args').value);
-				if (args.length) {
-					payload.args = args;
-				}
-				try {
-					const env = parseEnvVars(document.getElementById('server-env').value);
-					if (env) {
-						payload.env = env;
-					}
-				} catch (err) {
-					showToast(err.message, 'error');
-					return;
-				}
-			} else {
-				if (!url) {
-					showToast('URL is required for HTTP/SSE servers', 'error');
-					return;
-				}
-				payload.url = url;
-				try {
-					const headers = parseHeaderJSON(document.getElementById('server-headers').value);
-					if (headers) {
-						payload.headers = headers;
-					}
-				} catch (err) {
-					showToast('Headers JSON invalid: ' + err.message, 'error');
-					return;
-				}
-			}
-
-			fetchJSON('/api/servers', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			})
-				.then((data) => {
-					state.servers = data.servers || state.servers;
-					state.registryPath = data.path || state.registryPath;
-					document.getElementById('server-count').textContent = state.servers.length;
-					renderServers();
-					renderRegistryPath();
-					resetServerForm();
-					toggleServerForm(false);
-					showToast('Server registered', 'success');
-				})
-				.catch((err) => {
-					showToast('Failed to register server: ' + err.message, 'error');
-				});
-		}
 
 		function loadPolicy() {
 			return fetchJSON('/api/policy')
@@ -1369,6 +1170,55 @@ func getUnifiedDashboardHTML() string {
 					};
 					renderNativeTools();
 				});
+		}
+
+		function loadTools() {
+			return fetchJSON('/api/tools')
+				.then((data) => {
+					state.tools = data.tools || [];
+					renderToolDropdown();
+				})
+				.catch(() => {
+					// Fallback to native tools if /api/tools not available
+					state.tools = NATIVE_TOOLS.map(t => ({ name: t.name, type: 'native' }));
+					renderToolDropdown();
+				});
+		}
+
+		function renderToolDropdown() {
+			const select = document.getElementById('rule-tool');
+			if (!select) return;
+
+			// Keep the "All tools" option
+			select.innerHTML = '<option value="*">All tools</option>';
+
+			// Group tools by type
+			const nativeTools = state.tools.filter(t => t.type === 'native');
+			const mcpTools = state.tools.filter(t => t.type !== 'native');
+
+			if (nativeTools.length > 0) {
+				const group1 = document.createElement('optgroup');
+				group1.label = 'Native Tools';
+				nativeTools.forEach(tool => {
+					const opt = document.createElement('option');
+					opt.value = tool.name;
+					opt.textContent = tool.name;
+					group1.appendChild(opt);
+				});
+				select.appendChild(group1);
+			}
+
+			if (mcpTools.length > 0) {
+				const group2 = document.createElement('optgroup');
+				group2.label = 'MCP Tools';
+				mcpTools.forEach(tool => {
+					const opt = document.createElement('option');
+					opt.value = tool.name;
+					opt.textContent = tool.name + (tool.server ? ' (' + tool.server + ')' : '');
+					group2.appendChild(opt);
+				});
+				select.appendChild(group2);
+			}
 		}
 
 		function toolMode(toolName) {
@@ -1422,6 +1272,8 @@ func getUnifiedDashboardHTML() string {
 				switch (filter) {
 					case 'block':
 						return rule.action === 'block';
+					case 'ask':
+						return rule.action === 'ask';
 					case 'allow':
 						return rule.action === 'allow';
 					case 'enabled':
@@ -1443,7 +1295,7 @@ func getUnifiedDashboardHTML() string {
 				const card = document.createElement('details');
 				card.className = 'rule-card';
 
-				const actionClass = rule.action === 'block' ? 'chip-block' : 'chip-allow';
+				const actionClass = rule.action === 'block' ? 'chip-block' : (rule.action === 'ask' ? 'chip-off' : 'chip-allow');
 				const enabledClass = rule.enabled ? 'chip-on' : 'chip-off';
 				const enabledLabel = rule.enabled ? 'enabled' : 'disabled';
 				const toolsLabel = rule.tools && rule.tools.trim() ? rule.tools : 'all tools';
@@ -1535,15 +1387,9 @@ func getUnifiedDashboardHTML() string {
 		function openDrawer(rule) {
 			editingRuleId = rule ? rule.id : null;
 			document.getElementById('drawer-title').textContent = rule ? 'Edit rule' : 'New rule';
-			document.getElementById('rule-pattern').value = rule ? rule.pattern : '';
-			document.getElementById('rule-description').value = rule ? (rule.description || '') : '';
+			document.getElementById('rule-tool').value = rule ? (rule.tools || '*') : '*';
+			document.getElementById('rule-keywords').value = rule ? rule.pattern : '';
 			document.getElementById('rule-action').value = rule ? rule.action : 'block';
-			document.getElementById('rule-tools').value = rule ? (rule.tools || '') : '';
-			document.getElementById('rule-enabled').checked = rule ? rule.enabled : true;
-			document.getElementById('rule-regex').checked = rule ? rule.is_regex : false;
-			document.getElementById('rule-semantic').checked = rule ? rule.is_semantic : true;
-
-			setPermissionForm(rule ? rule.permissions : null, true);
 
 			document.body.classList.add('drawer-open');
 			drawer.setAttribute('aria-hidden', 'false');
@@ -1552,45 +1398,6 @@ func getUnifiedDashboardHTML() string {
 		function closeDrawer() {
 			document.body.classList.remove('drawer-open');
 			drawer.setAttribute('aria-hidden', 'true');
-		}
-
-		function buildPermissionGrid() {
-			const container = document.getElementById('permission-grid');
-			container.innerHTML = '';
-			PERMISSION_LABELS.forEach((item) => {
-				const wrapper = document.createElement('div');
-				wrapper.className = 'permission-item';
-				wrapper.innerHTML =
-					'<span>' + item.label + '</span>' +
-					'<select class="input" data-permission="' + item.key + '">' +
-						'<option value="allow">Allow</option>' +
-						'<option value="deny">Deny</option>' +
-						'<option value="inherit">Inherit</option>' +
-					'</select>';
-				container.appendChild(wrapper);
-			});
-		}
-
-		function setPermissionForm(permissions, force) {
-			const action = document.getElementById('rule-action').value || 'block';
-			const defaults = DEFAULT_PERMISSIONS[action] || DEFAULT_PERMISSIONS.block;
-			const entries = document.querySelectorAll('[data-permission]');
-			entries.forEach((select) => {
-				const key = select.getAttribute('data-permission');
-				const value = permissions && permissions[key] ? permissions[key] : defaults[key];
-				select.value = value;
-				if (force) {
-					select.dataset.manual = 'false';
-				}
-			});
-		}
-
-		function collectPermissions() {
-			const permissions = {};
-			document.querySelectorAll('[data-permission]').forEach((select) => {
-				permissions[select.getAttribute('data-permission')] = select.value;
-			});
-			return permissions;
 		}
 
 		function saveRulePayload(rule, silent) {
@@ -1641,36 +1448,35 @@ func getUnifiedDashboardHTML() string {
 			return div.innerHTML;
 		}
 
-		document.getElementById('server-transport').addEventListener('change', updateServerTransportFields);
-		document.getElementById('server-toggle').addEventListener('click', () => toggleServerForm());
-		document.getElementById('server-cancel').addEventListener('click', () => {
-			resetServerForm();
-			toggleServerForm(false);
-		});
 		document.getElementById('server-refresh').addEventListener('click', () => {
 			loadServers()
 				.then(() => showToast('Servers refreshed', 'success'))
 				.catch((err) => showToast('Failed to reload servers: ' + err.message, 'error'));
 		});
-		document.getElementById('server-form').addEventListener('submit', submitServerForm);
 
 		document.getElementById('rule-form').addEventListener('submit', (event) => {
 			event.preventDefault();
-			const pattern = document.getElementById('rule-pattern').value.trim();
-			if (!pattern) {
-				showToast('Pattern is required', 'error');
+			const keywords = document.getElementById('rule-keywords').value.trim();
+			if (!keywords) {
+				showToast('Keywords are required', 'error');
 				return;
 			}
+			const tool = document.getElementById('rule-tool').value;
 			const action = document.getElementById('rule-action').value;
+
+			// Build regex pattern from keywords
+			const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k);
+			const pattern = keywordList.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+
 			const payload = {
 				pattern: pattern,
-				description: document.getElementById('rule-description').value.trim(),
+				description: 'Block keywords: ' + keywordList.join(', '),
 				action: action,
-				is_regex: document.getElementById('rule-regex').checked,
-				is_semantic: document.getElementById('rule-semantic').checked,
-				tools: document.getElementById('rule-tools').value.trim(),
-				enabled: document.getElementById('rule-enabled').checked,
-				permissions: collectPermissions()
+				is_regex: true,
+				is_semantic: false,
+				tools: tool === '*' ? '' : tool,
+				enabled: true,
+				permissions: DEFAULT_PERMISSIONS[action] || DEFAULT_PERMISSIONS.block
 			};
 
 			const url = editingRuleId ? '/api/blocklist?id=' + editingRuleId : '/api/blocklist';
@@ -1698,7 +1504,7 @@ func getUnifiedDashboardHTML() string {
 		overlay.addEventListener('click', closeDrawer);
 
 		document.getElementById('refresh').addEventListener('click', () => {
-			Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadNativePermissions()])
+			Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadNativePermissions(), loadTools()])
 				.then(updateLastRefresh)
 				.catch((err) => showToast('Refresh failed: ' + err.message, 'error'));
 		});
@@ -1706,13 +1512,7 @@ func getUnifiedDashboardHTML() string {
 		document.getElementById('rule-search').addEventListener('input', renderRules);
 		document.getElementById('rule-filter').addEventListener('change', renderRules);
 
-		document.getElementById('rule-action').addEventListener('change', () => {
-			setPermissionForm(null, true);
-		});
-
-		document.getElementById('reset-permissions').addEventListener('click', () => {
-			setPermissionForm(null, true);
-		});
+		document.getElementById('cancel-rule').addEventListener('click', closeDrawer);
 
 		document.getElementById('save-policy').addEventListener('click', () => {
 			const mode = document.getElementById('policy-select').value;
@@ -1759,10 +1559,7 @@ func getUnifiedDashboardHTML() string {
 			}
 		});
 
-		updateServerTransportFields();
-		buildPermissionGrid();
-
-		Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadNativePermissions()])
+		Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadNativePermissions(), loadTools()])
 			.then(updateLastRefresh)
 			.catch((err) => showToast('Load failed: ' + err.message, 'error'));
 

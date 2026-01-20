@@ -65,6 +65,7 @@ func NewDashboardServer(
 	mux.HandleFunc("/api/policy", ds.handlePolicyAPI)
 	mux.HandleFunc("/api/permissions", ds.handlePermissionsAPI)
 	mux.HandleFunc("/api/blocklist", ds.handleBlocklistAPI)
+	mux.HandleFunc("/api/tools", ds.handleToolsAPI)
 	mux.HandleFunc("/api/stats", ds.handleStatsAPI)
 	mux.HandleFunc("/api/audit", ds.handleAuditAPI)
 	mux.HandleFunc("/api/health", ds.handleHealthAPI)
@@ -614,12 +615,58 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleToolsAPI returns list of all tools (native + MCP).
+func (ds *Server) handleToolsAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Native tools
+	nativeTools := []map[string]interface{}{
+		{"name": "Bash", "type": "native", "description": "Execute shell commands"},
+		{"name": "Read", "type": "native", "description": "Read files"},
+		{"name": "Write", "type": "native", "description": "Write files"},
+		{"name": "Edit", "type": "native", "description": "Edit files"},
+		{"name": "WebFetch", "type": "native", "description": "Fetch web content"},
+		{"name": "WebSearch", "type": "native", "description": "Search the web"},
+		{"name": "Glob", "type": "native", "description": "Find files by pattern"},
+		{"name": "Grep", "type": "native", "description": "Search file contents"},
+		{"name": "Task", "type": "native", "description": "Launch subagent tasks"},
+	}
+
+	// MCP tools from registered servers
+	mcpTools := []map[string]interface{}{}
+	ds.mu.RLock()
+	if ds.registry != nil {
+		for _, srv := range ds.registry.Servers {
+			// Add server as a tool source - actual tools would require querying the server
+			mcpTools = append(mcpTools, map[string]interface{}{
+				"name":   "mcp__" + srv.Name,
+				"type":   "mcp",
+				"server": srv.Name,
+				"description": fmt.Sprintf("MCP server: %s", srv.Name),
+			})
+		}
+	}
+	ds.mu.RUnlock()
+
+	// Combine all tools
+	allTools := append(nativeTools, mcpTools...)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tools": allTools,
+		"count": len(allTools),
+	})
+}
+
 func normalizeBlocklistAction(action string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(action))
 	if normalized == "" {
 		return "", fmt.Errorf("Action required")
 	}
-	if normalized != "block" && normalized != "allow" {
+	if normalized != "block" && normalized != "allow" && normalized != "ask" {
 		return "", fmt.Errorf("Invalid action: %s", action)
 	}
 	return normalized, nil
