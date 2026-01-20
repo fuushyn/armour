@@ -1000,6 +1000,17 @@ func getUnifiedDashboardHTML() string {
 			{ name: 'WebSearch', label: 'WebSearch' }
 		];
 
+		const PERMISSION_LABELS = [
+			{ key: 'tools_call', label: 'Tools Call' },
+			{ key: 'tools_list', label: 'Tools List' },
+			{ key: 'resources_read', label: 'Resources Read' },
+			{ key: 'resources_list', label: 'Resources List' },
+			{ key: 'resources_subscribe', label: 'Resources Subscribe' },
+			{ key: 'prompts_get', label: 'Prompts Get' },
+			{ key: 'prompts_list', label: 'Prompts List' },
+			{ key: 'sampling', label: 'Sampling' }
+		];
+
 		const state = {
 			rules: [],
 			servers: [],
