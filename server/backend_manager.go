@@ -911,9 +911,6 @@ func (bc *BackendConnection) initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to send initialize request: %v", err)
 	}
 
-	bc.mu.Lock()
-	defer bc.mu.Unlock()
-
 	// Parse response
 	var initResp struct {
 		Result struct {
@@ -944,19 +941,21 @@ func (bc *BackendConnection) initialize(ctx context.Context) error {
 		// Continue anyway - some servers might not enforce this strictly
 	}
 
+	// Set state under lock, but run SSE connect afterward to avoid double unlock
+	bc.mu.Lock()
 	bc.Capabilities = &initResp.Result.Capabilities
 	bc.initialized = true
+	transport := bc.transport
+	bc.mu.Unlock()
 
 	bc.logger.Debug("backend initialized: %s v%s", initResp.Result.ServerInfo.Name, initResp.Result.ServerInfo.Version)
 
 	// For SSE transport, establish the event stream after initialization
-	if sseTransport, ok := bc.transport.(*proxy.SSETransport); ok {
-		bc.mu.Unlock() // Release lock before Connect which takes its own lock
+	if sseTransport, ok := transport.(*proxy.SSETransport); ok {
 		if err := sseTransport.Connect(); err != nil {
 			bc.logger.Error("failed to connect SSE stream: %v", err)
 			return fmt.Errorf("failed to connect SSE stream: %v", err)
 		}
-		bc.mu.Lock() // Re-acquire lock
 	}
 
 	return nil
