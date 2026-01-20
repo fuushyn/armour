@@ -78,6 +78,19 @@ func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker 
 	// Create blocklist middleware
 	blocklist := NewBlocklistMiddleware(db, apiKey, statsTracker, logger)
 
+	// Configure rules server URL if available (for instant rule updates)
+	if rulesURL := os.Getenv("ARMOUR_RULES_URL"); rulesURL != "" {
+		blocklist.SetRulesServerURL(rulesURL)
+		logger.Info("using rules server at %s for instant policy enforcement", rulesURL)
+	} else {
+		// Default to localhost:8084 if server is running
+		defaultRulesURL := "http://127.0.0.1:8084"
+		if CheckRulesServer(8084) {
+			blocklist.SetRulesServerURL(defaultRulesURL)
+			logger.Info("detected rules server at %s", defaultRulesURL)
+		}
+	}
+
 	s := &StdioServer{
 		config:         config,
 		db:             db,

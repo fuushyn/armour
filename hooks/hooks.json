@@ -11,8 +11,25 @@
           },
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/start-rules-server.sh",
+            "description": "Start the Armour rules server for instant policy enforcement"
+          },
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/enable-plugin.sh",
             "description": "Enable the armour plugin on session start"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-tool.sh",
+            "description": "Check tool against Armour rules before execution"
           }
         ]
       }

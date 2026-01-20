@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -14,19 +15,22 @@ import (
 )
 
 const (
-	// cacheTTL is the time to live for the rules cache
+	// cacheTTL is the time to live for the rules cache (only used when rules server unavailable)
 	cacheTTL = 30 * time.Second
+	// rulesServerTimeout is the timeout for rules server queries
+	rulesServerTimeout = 100 * time.Millisecond
 )
 
 // BlocklistMiddleware handles blocklist enforcement for MCP requests
 type BlocklistMiddleware struct {
-	db         *sql.DB
-	apiKey     string // For Claude API semantic matching
-	stats      *StatsTracker
-	rulesCache []BlocklistRule
-	cacheMu    sync.RWMutex
-	cacheTime  time.Time
-	logger     Logger
+	db             *sql.DB
+	apiKey         string // For Claude API semantic matching
+	stats          *StatsTracker
+	rulesCache     []BlocklistRule
+	cacheMu        sync.RWMutex
+	cacheTime      time.Time
+	logger         Logger
+	rulesServerURL string // URL of external rules server (for instant updates)
 }
 
 // Logger interface for logging
@@ -58,17 +62,33 @@ func NewBlocklistMiddleware(db *sql.DB, apiKey string, stats *StatsTracker, logg
 	}
 }
 
+// SetRulesServerURL sets the URL for an external rules server
+// When set, Check() will query this server instead of using local cache
+func (bm *BlocklistMiddleware) SetRulesServerURL(url string) {
+	bm.rulesServerURL = url
+}
+
 // Check validates if a requested operation on a tool is allowed
 func (bm *BlocklistMiddleware) Check(method string, toolName string, args map[string]interface{}) (*BlocklistCheckResult, error) {
+	// Extract content from arguments for pattern matching
+	content := bm.extractContent(method, toolName, args)
+
+	// If rules server is configured, query it first (instant updates)
+	if bm.rulesServerURL != "" {
+		result, err := bm.queryRulesServer(toolName, method, content)
+		if err == nil {
+			return result, nil
+		}
+		// Rules server unavailable, fall back to local check
+		bm.logger.Warn("rules server query failed, using local cache: %v", err)
+	}
+
 	// Get rules from cache or database
 	rules, err := bm.getRules()
 	if err != nil {
 		bm.logger.Error("failed to get blocklist rules: %v", err)
 		return &BlocklistCheckResult{Allowed: true}, nil // Fail open for safety
 	}
-
-	// Extract content from arguments for pattern matching
-	content := bm.extractContent(method, toolName, args)
 
 	// Check regex rules first (fast)
 	if result := bm.checkRegexRules(content, toolName, method, rules); result != nil {
@@ -82,6 +102,58 @@ func (bm *BlocklistMiddleware) Check(method string, toolName string, args map[st
 
 	// No rules matched - allowed
 	return &BlocklistCheckResult{Allowed: true}, nil
+}
+
+// queryRulesServer queries the external rules server for a check
+func (bm *BlocklistMiddleware) queryRulesServer(toolName, method, content string) (*BlocklistCheckResult, error) {
+	client := &http.Client{Timeout: rulesServerTimeout}
+
+	url := fmt.Sprintf("%s/api/check?tool=%s&method=%s&content=%s&scope=mcp",
+		bm.rulesServerURL,
+		urlEncode(toolName),
+		urlEncode(method),
+		urlEncode(content),
+	)
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("rules server request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("rules server returned status %d", resp.StatusCode)
+	}
+
+	var checkResp struct {
+		Allowed  bool   `json:"allowed"`
+		Decision string `json:"decision"`
+		Reason   string `json:"reason"`
+		RuleID   int    `json:"rule_id"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&checkResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	result := &BlocklistCheckResult{
+		Allowed: checkResp.Allowed,
+	}
+
+	if !checkResp.Allowed {
+		result.Error = &MCPError{
+			Code:    -32001,
+			Message: checkResp.Reason,
+		}
+		result.DeniedOperation = "tools_call"
+	}
+
+	return result, nil
+}
+
+// urlEncode encodes a string for use in a URL query parameter
+func urlEncode(s string) string {
+	return url.QueryEscape(s)
 }
 
 // getRules returns enabled blocklist rules, using cache if available

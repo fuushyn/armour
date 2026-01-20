@@ -40,6 +40,9 @@ func main() {
 		case "recover":
 			handleRecoverCommand()
 			return
+		case "serve":
+			handleServeCommand()
+			return
 		case "version":
 			fmt.Println("mcp-proxy v1.0.16")
 			return
@@ -327,6 +330,74 @@ func handleRecoverCommand() {
 	}
 }
 
+func handleServeCommand() {
+	// Parse serve-specific flags
+	port := 8084
+	dbPath := ""
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	logLevel := "info"
+
+	for i := 2; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "-port":
+			if i+1 < len(os.Args) {
+				fmt.Sscanf(os.Args[i+1], "%d", &port)
+				i++
+			}
+		case "-db":
+			if i+1 < len(os.Args) {
+				dbPath = os.Args[i+1]
+				i++
+			}
+		case "-api-key":
+			if i+1 < len(os.Args) {
+				apiKey = os.Args[i+1]
+				i++
+			}
+		case "-log-level":
+			if i+1 < len(os.Args) {
+				logLevel = os.Args[i+1]
+				i++
+			}
+		}
+	}
+
+	// Default DB path
+	if dbPath == "" {
+		homeDir, _ := os.UserHomeDir()
+		dbPath = homeDir + "/.armour/rules.db"
+	}
+
+	config := server.RulesServerConfig{
+		Port:     port,
+		DBPath:   dbPath,
+		APIKey:   apiKey,
+		LogLevel: logLevel,
+	}
+
+	srv, err := server.NewRulesServer(config)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create rules server: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := srv.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start rules server: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Write PID file
+	srv.WritePIDFile()
+
+	// Wait for shutdown signal
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
+
+	fmt.Println("\nShutting down rules server...")
+	srv.Stop()
+}
+
 func printHelp() {
 	fmt.Print(`
 MCP Go Proxy v1.0.16
@@ -337,6 +408,9 @@ USAGE:
 COMMANDS:
   detect        Detect existing MCP servers in standard locations
   up            Auto-discover and start MCP servers in current project
+  serve         Start the rules server for instant policy enforcement
+  backup        Backup MCP configurations
+  recover       Restore MCP configurations from backup
   version       Print version
   help          Print this help message
 
