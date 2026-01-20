@@ -12,13 +12,13 @@ func TestSamplingBlockedWhenCapabilityAbsent(t *testing.T) {
 	proxy := NewProxy(db)
 	guard := NewSamplingGuard()
 
-	clientReq := NewInitRequest("TestClient", "1.0.15")
+	clientReq := NewInitRequest("TestClient", "1.0.16")
 	clientReq.Params.Capabilities.Sampling = nil
 
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.15",
+			Version: "1.0.16",
 		},
 		Capabilities: Capabilities{
 			Sampling: &SamplingCapability{
@@ -71,13 +71,13 @@ func TestSamplingDisabledOnStdio(t *testing.T) {
 	guard := NewSamplingGuard()
 	guard.DisableOnTransport("stdio")
 
-	clientReq := NewInitRequest("TestClient", "1.0.15")
+	clientReq := NewInitRequest("TestClient", "1.0.16")
 	clientReq.Params.Capabilities.Sampling = &SamplingCapability{Tools: true}
 
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.15",
+			Version: "1.0.16",
 		},
 		Capabilities: Capabilities{
 			Sampling: &SamplingCapability{Tools: true},
@@ -215,13 +215,13 @@ func TestSamplingToolsOnlyBothSidesDeclared(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			proxy := NewProxy(db)
 
-			clientReq := NewInitRequest("TestClient", "1.0.15")
+			clientReq := NewInitRequest("TestClient", "1.0.16")
 			clientReq.Params.Capabilities.Sampling = tt.clientSampling
 
 			serverResp := InitResponseResult{
 				ServerInfo: ServerInfo{
 					Name:    "TestServer",
-					Version: "1.0.15",
+					Version: "1.0.16",
 				},
 				Capabilities: Capabilities{
 					Sampling: tt.serverSampling,
@@ -247,13 +247,13 @@ func TestSamplingRequestValidation(t *testing.T) {
 	proxy := NewProxy(db)
 	guard := NewSamplingGuard()
 
-	clientReq := NewInitRequest("TestClient", "1.0.15")
+	clientReq := NewInitRequest("TestClient", "1.0.16")
 	clientReq.Params.Capabilities.Sampling = &SamplingCapability{Tools: true}
 
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.15",
+			Version: "1.0.16",
 		},
 		Capabilities: Capabilities{
 			Sampling: &SamplingCapability{Tools: true},

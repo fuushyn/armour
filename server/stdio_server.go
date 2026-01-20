@@ -249,7 +249,7 @@ func (s *StdioServer) handleInitialize(ctx context.Context, request JSONRPCReque
 	result := map[string]interface{}{
 		"serverInfo": map[string]string{
 			"name":    "mcp-go-proxy",
-			"version": "1.0.15",
+			"version": "1.0.16",
 		},
 		"capabilities":    finalCaps,
 		"protocolVersion": proxy.MCPProtocolVersion,

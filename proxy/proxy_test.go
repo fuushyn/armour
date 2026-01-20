@@ -13,11 +13,11 @@ func TestInitVersionSuccess(t *testing.T) {
 
 	p := NewProxy(db)
 
-	clientReq := NewInitRequest("TestClient", "1.0.15")
+	clientReq := NewInitRequest("TestClient", "1.0.16")
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.15",
+			Version: "1.0.16",
 		},
 		Capabilities: Capabilities{
 			Sampling: &SamplingCapability{
@@ -72,7 +72,7 @@ func TestInitVersionMismatch(t *testing.T) {
 				Params: InitRequestParams{
 					ClientInfo: ClientInfo{
 						Name:    "TestClient",
-						Version: "1.0.15",
+						Version: "1.0.16",
 					},
 					Capabilities:    Capabilities{},
 					ProtocolVersion: tt.clientVersion,
@@ -82,7 +82,7 @@ func TestInitVersionMismatch(t *testing.T) {
 			serverResp := InitResponseResult{
 				ServerInfo: ServerInfo{
 					Name:    "TestServer",
-					Version: "1.0.15",
+					Version: "1.0.16",
 				},
 				Capabilities:    Capabilities{},
 				ProtocolVersion: tt.serverVersion,
@@ -164,13 +164,13 @@ func TestCapabilityIntersection(t *testing.T) {
 			defer db.Close()
 
 			p := NewProxy(db)
-			clientReq := NewInitRequest("TestClient", "1.0.15")
+			clientReq := NewInitRequest("TestClient", "1.0.16")
 			clientReq.Params.Capabilities = tt.clientCaps
 
 			serverResp := InitResponseResult{
 				ServerInfo: ServerInfo{
 					Name:    "TestServer",
-					Version: "1.0.15",
+					Version: "1.0.16",
 				},
 				Capabilities:    tt.serverCaps,
 				ProtocolVersion: MCPProtocolVersion,
@@ -263,13 +263,13 @@ func TestCapabilityValidation(t *testing.T) {
 			defer db.Close()
 
 			p := NewProxy(db)
-			clientReq := NewInitRequest("TestClient", "1.0.15")
+			clientReq := NewInitRequest("TestClient", "1.0.16")
 			clientReq.Params.Capabilities = tt.caps
 
 			serverResp := InitResponseResult{
 				ServerInfo: ServerInfo{
 					Name:    "TestServer",
-					Version: "1.0.15",
+					Version: "1.0.16",
 				},
 				Capabilities:    tt.caps,
 				ProtocolVersion: MCPProtocolVersion,
@@ -297,11 +297,11 @@ func TestInitializedNotificationOnly(t *testing.T) {
 		t.Errorf("expected not initialized before Initialize call")
 	}
 
-	clientReq := NewInitRequest("TestClient", "1.0.15")
+	clientReq := NewInitRequest("TestClient", "1.0.16")
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.15",
+			Version: "1.0.16",
 		},
 		Capabilities:    Capabilities{},
 		ProtocolVersion: MCPProtocolVersion,

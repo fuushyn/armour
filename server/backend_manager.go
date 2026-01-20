@@ -903,7 +903,7 @@ func (bm *BackendManager) CallTool(ctx context.Context, backendID string, toolNa
 // initialize sends an initialize request to the backend server.
 func (bc *BackendConnection) initialize(ctx context.Context) error {
 	// Build initialize request
-	initReq := proxy.NewInitRequest("mcp-go-proxy", "1.0.15")
+	initReq := proxy.NewInitRequest("mcp-go-proxy", "1.0.16")
 
 	// Send request to backend and get response
 	respBytes, err := bc.sendRequest(ctx, initReq)

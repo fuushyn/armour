@@ -98,7 +98,7 @@ func (s *SSETransport) Connect() error {
 	req.Header.Set(HeaderProtocolVersion, MCPProtocolVersion)
 	req.Header.Set(HeaderSessionID, s.sessionID)
 	// Some servers require clients to accept both JSON and SSE content types
-	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Accept", "application/json, text/event-stream, */*")
 
 	if s.lastEventID > 0 {
 		req.Header.Set("Last-Event-ID", strconv.Itoa(s.lastEventID))
@@ -202,7 +202,8 @@ func (s *SSETransport) SendMessage(msg []byte) error {
 		req.Header.Set(HeaderSessionID, sessionID)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	// MCP Streamable HTTP requires clients to accept both JSON and SSE responses
+	req.Header.Set("Accept", "application/json, text/event-stream, */*")
 
 	// Set custom headers (e.g., API keys)
 	for key, value := range headers {
