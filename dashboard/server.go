@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/user/mcp-go-proxy/proxy"
 	"github.com/user/mcp-go-proxy/server"
@@ -28,6 +29,7 @@ type Server struct {
 	statsTracker  *server.StatsTracker
 	policyManager *server.PolicyManager
 	blocklist     *server.BlocklistMiddleware
+	toolRegistry  *server.ToolRegistry
 	db            *sql.DB
 	logger        *proxy.Logger
 
@@ -42,6 +44,7 @@ func NewDashboardServer(
 	statsTracker *server.StatsTracker,
 	policyManager *server.PolicyManager,
 	blocklist *server.BlocklistMiddleware,
+	toolRegistry *server.ToolRegistry,
 	db *sql.DB,
 	logger *proxy.Logger,
 ) *Server {
@@ -52,6 +55,7 @@ func NewDashboardServer(
 		statsTracker:  statsTracker,
 		policyManager: policyManager,
 		blocklist:     blocklist,
+		toolRegistry:  toolRegistry,
 		db:            db,
 		logger:        logger,
 	}
@@ -616,49 +620,14 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleToolsAPI returns list of all tools (native + MCP).
-// First tries to get tools from the rules server, falls back to hardcoded list.
+// Tries multiple sources: tool registry, rules server, and servers.json.
 func (ds *Server) handleToolsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Try to get tools from rules server first
-	resp, err := http.Get("http://127.0.0.1:8084/api/tools")
-	if err == nil && resp.StatusCode == 200 {
-		defer resp.Body.Close()
-		var rulesData struct {
-			Native []map[string]interface{} `json:"native"`
-			MCP    []map[string]interface{} `json:"mcp"`
-		}
-		if json.NewDecoder(resp.Body).Decode(&rulesData) == nil {
-			// Convert to unified format
-			allTools := []map[string]interface{}{}
-			for _, t := range rulesData.Native {
-				allTools = append(allTools, map[string]interface{}{
-					"name":        t["name"],
-					"type":        "native",
-					"description": t["description"],
-				})
-			}
-			for _, t := range rulesData.MCP {
-				allTools = append(allTools, map[string]interface{}{
-					"name":        t["name"],
-					"type":        "mcp",
-					"server":      t["name"],
-					"description": t["description"],
-				})
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"tools": allTools,
-				"count": len(allTools),
-			})
-			return
-		}
-	}
-
-	// Fallback: Native tools
+	// Native tools (Claude Code built-ins)
 	nativeTools := []map[string]interface{}{
 		{"name": "Bash", "type": "native", "description": "Execute shell commands"},
 		{"name": "Read", "type": "native", "description": "Read files"},
@@ -669,22 +638,98 @@ func (ds *Server) handleToolsAPI(w http.ResponseWriter, r *http.Request) {
 		{"name": "Glob", "type": "native", "description": "Find files by pattern"},
 		{"name": "Grep", "type": "native", "description": "Search file contents"},
 		{"name": "Task", "type": "native", "description": "Launch subagent tasks"},
+		{"name": "TodoWrite", "type": "native", "description": "Manage todo list"},
+		{"name": "NotebookEdit", "type": "native", "description": "Edit Jupyter notebooks"},
 	}
 
-	// MCP tools from registered servers
+	// Get MCP tools from tool registry (aggregated from all backends)
 	mcpTools := []map[string]interface{}{}
-	ds.mu.RLock()
-	if ds.registry != nil {
-		for _, srv := range ds.registry.Servers {
+	if ds.toolRegistry != nil {
+		registeredTools := ds.toolRegistry.ListAllTools()
+		for _, tool := range registeredTools {
+			backendName := tool.BackendID
+			if backendName == "" {
+				parts := strings.SplitN(tool.Name, ":", 2)
+				if len(parts) == 2 {
+					backendName = parts[0]
+				}
+			}
 			mcpTools = append(mcpTools, map[string]interface{}{
-				"name":        srv.Name,
+				"name":        tool.Name,
 				"type":        "mcp",
-				"server":      srv.Name,
-				"description": fmt.Sprintf("MCP server: %s", srv.Name),
+				"server":      backendName,
+				"description": tool.Description,
 			})
 		}
 	}
-	ds.mu.RUnlock()
+
+	// If no MCP tools from registry, try loading from persisted discovered-tools.json
+	if len(mcpTools) == 0 {
+		if discoveredTools, err := server.LoadDiscoveredTools(); err == nil && len(discoveredTools) > 0 {
+			for _, tool := range discoveredTools {
+				backendName := tool.BackendID
+				if backendName == "" {
+					parts := strings.SplitN(tool.Name, ":", 2)
+					if len(parts) == 2 {
+						backendName = parts[0]
+					}
+				}
+				mcpTools = append(mcpTools, map[string]interface{}{
+					"name":        tool.Name,
+					"type":        "mcp",
+					"server":      backendName,
+					"description": tool.Description,
+				})
+			}
+		}
+	}
+
+	// If still no MCP tools, try rules server
+	if len(mcpTools) == 0 {
+		client := &http.Client{Timeout: 500 * time.Millisecond}
+		if resp, err := client.Get("http://127.0.0.1:8084/api/tools"); err == nil && resp.StatusCode == 200 {
+			defer resp.Body.Close()
+			var rulesData struct {
+				MCP []struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				} `json:"mcp"`
+			}
+			if json.NewDecoder(resp.Body).Decode(&rulesData) == nil {
+				for _, t := range rulesData.MCP {
+					mcpTools = append(mcpTools, map[string]interface{}{
+						"name":        t.Name,
+						"type":        "mcp",
+						"server":      t.Name,
+						"description": t.Description,
+					})
+				}
+			}
+		}
+	}
+
+	// If still no MCP tools, read from servers.json (only server names, not individual tools)
+	if len(mcpTools) == 0 {
+		homeDir, _ := os.UserHomeDir()
+		serversPath := filepath.Join(homeDir, ".armour", "servers.json")
+		if data, err := os.ReadFile(serversPath); err == nil {
+			var config struct {
+				Servers []struct {
+					Name string `json:"name"`
+				} `json:"servers"`
+			}
+			if json.Unmarshal(data, &config) == nil {
+				for _, srv := range config.Servers {
+					mcpTools = append(mcpTools, map[string]interface{}{
+						"name":        srv.Name,
+						"type":        "mcp",
+						"server":      srv.Name,
+						"description": fmt.Sprintf("MCP server: %s", srv.Name),
+					})
+				}
+			}
+		}
+	}
 
 	allTools := append(nativeTools, mcpTools...)
 

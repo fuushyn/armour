@@ -130,6 +130,11 @@ func (s *StdioServer) GetDB() *sql.DB {
 	return s.db
 }
 
+// GetToolRegistry returns the tool registry for accessing aggregated tools
+func (s *StdioServer) GetToolRegistry() *ToolRegistry {
+	return s.toolRegistry
+}
+
 // Close closes the server resources including the database
 func (s *StdioServer) Close() error {
 	if s.db != nil {

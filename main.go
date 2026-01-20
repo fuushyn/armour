@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -126,7 +128,7 @@ func runStdioMode(ctx context.Context, config server.Config) error {
 	// 2. Start Dashboard (Dual-Head)
 	// Bind to localhost for security, hardcoded port for now (as per architecture)
 	dashboardAddr := "127.0.0.1:13337"
-	dashboardSrv := dashboard.NewDashboardServer(dashboardAddr, registry, config.ConfigPath, statsTracker, policyManager, stdioSrv.GetBlocklist(), stdioSrv.GetDB(), logger)
+	dashboardSrv := dashboard.NewDashboardServer(dashboardAddr, registry, config.ConfigPath, statsTracker, policyManager, stdioSrv.GetBlocklist(), stdioSrv.GetToolRegistry(), stdioSrv.GetDB(), logger)
 
 	if err := dashboardSrv.Start(); err != nil {
 		log.Printf("Warning: failed to start dashboard: %v", err)
@@ -263,40 +265,41 @@ func handleMigrateCommand() {
 }
 
 func handleStatusCommand() {
+	dashboardURL := "http://localhost:13337"
+
 	// Check if dashboard is reachable
 	client := http.Client{
 		Timeout: 2 * time.Second,
 	}
 
-	resp, err := client.Get("http://localhost:13337/api/health")
+	resp, err := client.Get(dashboardURL + "/api/health")
 	if err != nil {
-		fmt.Println("🔴 Sentinel Proxy is Inactive")
-		fmt.Println("   (Could not connect to dashboard at localhost:13337)")
+		fmt.Println("Proxy not running. Start Claude Code to activate.")
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("⚠️  Sentinel Proxy returned status %d\n", resp.StatusCode)
+		fmt.Printf("Proxy returned status %d\n", resp.StatusCode)
 		os.Exit(1)
 	}
 
-	// Fetch detailed stats
-	statsResp, err := client.Get("http://localhost:13337/api/stats")
-	if err == nil {
-		defer statsResp.Body.Close()
-		var stats map[string]interface{}
-		if err := json.NewDecoder(statsResp.Body).Decode(&stats); err == nil {
-			fmt.Println("🟢 Sentinel Proxy is Active")
-			fmt.Println("   Status: Running")
-			fmt.Printf("   Uptime: %.0fs\n", stats["uptime_seconds"])
-			fmt.Printf("   Blocked Calls: %.0f\n", stats["blocked_calls_total"])
-			fmt.Println("\n   Dashboard: http://localhost:13337")
-		} else {
-			fmt.Println("🟢 Sentinel Proxy is Active")
-		}
-	} else {
-		fmt.Println("🟢 Sentinel Proxy is Active")
+	// Open browser directly
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", dashboardURL)
+	case "linux":
+		cmd = exec.Command("xdg-open", dashboardURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", dashboardURL)
+	default:
+		fmt.Printf("Dashboard: %s\n", dashboardURL)
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("Dashboard: %s\n", dashboardURL)
 	}
 }
 

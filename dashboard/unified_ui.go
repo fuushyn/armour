@@ -828,6 +828,7 @@ func getUnifiedDashboardHTML() string {
 			<div class="brand">Armour Control Plane</div>
 			<nav class="nav">
 				<a href="#overview">Overview</a>
+				<a href="#rules">Rules</a>
 			</nav>
 			<div class="status-pill"><span class="status-dot"></span>Proxy online</div>
 		</div>
@@ -840,14 +841,17 @@ func getUnifiedDashboardHTML() string {
 					<h1>Security control for MCP tools</h1>
 					<p>Armour sits between Claude Code and your MCP servers, enforcing tool-level rules, logging intent, and keeping your stack in a safe state.</p>
 					<div class="hero-actions">
-						<button class="btn btn-primary" id="refresh">Refresh</button>
+						<button class="btn btn-primary" id="new-rule">New rule</button>
+						<button class="btn btn-ghost" id="refresh">Refresh</button>
 						<a class="btn" href="https://github.com/fuushyn/armour" target="_blank" rel="noreferrer">Docs</a>
 					</div>
 				</div>
 				<div class="card">
 					<h3 style="margin-top: 0;">Live status</h3>
 					<div class="stat-sub" id="last-refresh">Last refreshed: --</div>
-					<div class="muted" style="margin-top: 12px;">Servers: <span id="server-count">0</span></div>
+					<div class="muted" style="margin-top: 12px;">Active rules: <span id="rule-count">0</span></div>
+					<div class="muted" style="margin-top: 6px;">Policy: <span id="policy-mode">--</span></div>
+					<div class="muted" style="margin-top: 6px;">Servers: <span id="server-count">0</span></div>
 				</div>
 			</div>
 
@@ -894,17 +898,120 @@ func getUnifiedDashboardHTML() string {
 			</div>
 		</section>
 
+		<section id="rules" class="section reveal">
+			<div class="section-header">
+				<h2 class="section-title">Rules and permissions</h2>
+				<div class="rule-controls">
+					<input class="input" id="rule-search" type="text" placeholder="Search patterns, tools, descriptions" />
+					<select class="input" id="rule-filter">
+						<option value="all">All rules</option>
+						<option value="block">Block only</option>
+						<option value="ask">Ask only</option>
+						<option value="allow">Allow only</option>
+						<option value="enabled">Enabled only</option>
+						<option value="disabled">Disabled only</option>
+					</select>
+					<button class="btn" id="new-rule-secondary">New rule</button>
+				</div>
+			</div>
+			<div class="rule-list" id="rules-list">
+				<div class="empty-state">Loading rules...</div>
+			</div>
+		</section>
+
 	</main>
+
+	<div class="overlay" id="overlay"></div>
+
+	<aside class="drawer" id="rule-drawer" aria-hidden="true">
+		<div class="drawer-header">
+			<h2 id="drawer-title">New rule</h2>
+			<button class="btn btn-ghost" id="close-drawer">Close</button>
+		</div>
+		<form id="rule-form">
+			<div class="form-row">
+				<label for="rule-tool">Tool</label>
+				<select class="input" id="rule-tool" required>
+					<option value="*">All tools</option>
+				</select>
+			</div>
+			<div class="form-row">
+				<label for="rule-keywords">Keywords to block</label>
+				<input class="input" id="rule-keywords" type="text" placeholder="e.g. password, secret, DROP TABLE" required />
+				<span class="muted">Comma-separated keywords that trigger this rule</span>
+			</div>
+			<div class="form-row">
+				<label for="rule-action">Action</label>
+				<select class="input" id="rule-action" required>
+					<option value="block">Block</option>
+					<option value="ask">Ask for confirmation</option>
+					<option value="allow">Allow</option>
+				</select>
+			</div>
+			<div class="drawer-actions">
+				<button class="btn btn-primary" type="submit">Save rule</button>
+				<button class="btn btn-ghost" type="button" id="cancel-rule">Cancel</button>
+			</div>
+		</form>
+	</aside>
 
 	<div class="toast" id="toast"></div>
 
 	<script>
+		const DEFAULT_PERMISSIONS = {
+			block: {
+				tools_call: 'deny',
+				tools_list: 'allow',
+				resources_read: 'deny',
+				resources_list: 'allow',
+				resources_subscribe: 'deny',
+				prompts_get: 'deny',
+				prompts_list: 'allow',
+				sampling: 'deny'
+			},
+			allow: {
+				tools_call: 'allow',
+				tools_list: 'allow',
+				resources_read: 'allow',
+				resources_list: 'allow',
+				resources_subscribe: 'allow',
+				prompts_get: 'allow',
+				prompts_list: 'allow',
+				sampling: 'allow'
+			},
+			ask: {
+				tools_call: 'deny',
+				tools_list: 'allow',
+				resources_read: 'deny',
+				resources_list: 'allow',
+				resources_subscribe: 'deny',
+				prompts_get: 'deny',
+				prompts_list: 'allow',
+				sampling: 'deny'
+			}
+		};
+
+		const NATIVE_TOOLS = [
+			{ name: 'Bash', label: 'Bash' },
+			{ name: 'Read', label: 'Read' },
+			{ name: 'Write', label: 'Write' },
+			{ name: 'Edit', label: 'Edit' },
+			{ name: 'WebFetch', label: 'WebFetch' },
+			{ name: 'WebSearch', label: 'WebSearch' }
+		];
+
 		const state = {
+			rules: [],
 			servers: [],
+			tools: [],
 			registryPath: ''
 		};
 
+		let editingRuleId = null;
+
 		const toast = document.getElementById('toast');
+		const drawer = document.getElementById('rule-drawer');
+		const overlay = document.getElementById('overlay');
 
 		function showToast(message, type) {
 			toast.textContent = message;
@@ -988,6 +1095,255 @@ func getUnifiedDashboardHTML() string {
 		});
 	}
 
+		function loadPolicy() {
+			return fetchJSON('/api/policy')
+				.then((data) => {
+					const mode = data.mode || 'moderate';
+					document.getElementById('policy-mode').textContent = mode;
+				});
+		}
+
+		function loadRules() {
+			return fetchJSON('/api/blocklist')
+				.then((data) => {
+					state.rules = data.rules || [];
+					document.getElementById('rule-count').textContent = state.rules.length;
+					renderRules();
+				});
+		}
+
+		function loadTools() {
+			return fetchJSON('/api/tools')
+				.then((data) => {
+					state.tools = data.tools || [];
+					renderToolDropdown();
+				})
+				.catch(() => {
+					// Fallback to native tools if /api/tools not available
+					state.tools = NATIVE_TOOLS.map(t => ({ name: t.name, type: 'native' }));
+					renderToolDropdown();
+				});
+		}
+
+		function renderToolDropdown() {
+			const select = document.getElementById('rule-tool');
+			if (!select) return;
+
+			// Keep the "All tools" option
+			select.innerHTML = '<option value="*">All tools</option>';
+
+			// Group tools by type
+			const nativeTools = state.tools.filter(t => t.type === 'native');
+			const mcpTools = state.tools.filter(t => t.type !== 'native');
+
+			if (nativeTools.length > 0) {
+				const group1 = document.createElement('optgroup');
+				group1.label = 'Native Tools';
+				nativeTools.forEach(tool => {
+					const opt = document.createElement('option');
+					opt.value = tool.name;
+					opt.textContent = tool.name;
+					group1.appendChild(opt);
+				});
+				select.appendChild(group1);
+			}
+
+			if (mcpTools.length > 0) {
+				const group2 = document.createElement('optgroup');
+				group2.label = 'MCP Tools';
+				mcpTools.forEach(tool => {
+					const opt = document.createElement('option');
+					opt.value = tool.name;
+					opt.textContent = tool.name + (tool.server ? ' (' + tool.server + ')' : '');
+					group2.appendChild(opt);
+				});
+				select.appendChild(group2);
+			}
+		}
+
+		function renderRules() {
+			const list = document.getElementById('rules-list');
+			const search = document.getElementById('rule-search').value.toLowerCase();
+			const filter = document.getElementById('rule-filter').value;
+
+			const filtered = state.rules.filter((rule) => {
+				const haystack = (rule.pattern + ' ' + (rule.description || '') + ' ' + (rule.tools || '')).toLowerCase();
+				if (search && !haystack.includes(search)) {
+					return false;
+				}
+				switch (filter) {
+					case 'block':
+						return rule.action === 'block';
+					case 'ask':
+						return rule.action === 'ask';
+					case 'allow':
+						return rule.action === 'allow';
+					case 'enabled':
+						return rule.enabled;
+					case 'disabled':
+						return !rule.enabled;
+					default:
+						return true;
+				}
+			});
+
+			list.innerHTML = '';
+			if (filtered.length === 0) {
+				list.innerHTML = '<div class="empty-state">No rules match these filters.</div>';
+				return;
+			}
+
+			filtered.forEach((rule) => {
+				const card = document.createElement('details');
+				card.className = 'rule-card';
+
+				const actionClass = rule.action === 'block' ? 'chip-block' : (rule.action === 'ask' ? 'chip-off' : 'chip-allow');
+				const enabledClass = rule.enabled ? 'chip-on' : 'chip-off';
+				const enabledLabel = rule.enabled ? 'enabled' : 'disabled';
+				const toolsLabel = rule.tools && rule.tools.trim() ? rule.tools : 'all tools';
+				const typeLabels = [];
+				if (rule.is_regex) {
+					typeLabels.push('<span class="chip">regex</span>');
+				}
+				if (rule.is_semantic) {
+					typeLabels.push('<span class="chip">semantic</span>');
+				}
+
+				card.innerHTML =
+					'<summary>' +
+						'<div class="rule-main">' +
+							'<div class="rule-pattern">' + escapeHTML(rule.pattern) + '</div>' +
+							'<div class="rule-desc">' + escapeHTML(rule.description || 'No description') + '</div>' +
+						'</div>' +
+						'<div class="rule-meta">' +
+							'<span class="chip ' + actionClass + '">' + escapeHTML(rule.action) + '</span>' +
+							typeLabels.join('') +
+							'<span class="chip ' + enabledClass + '">' + enabledLabel + '</span>' +
+						'</div>' +
+					'</summary>' +
+					'<div class="rule-body">' +
+						'<div class="rule-columns">' +
+							'<div class="rule-block"><strong>Tools</strong>' + escapeHTML(toolsLabel) + '</div>' +
+							'<div class="rule-block"><strong>Pattern type</strong>' +
+								escapeHTML((rule.is_regex ? 'Regex ' : '') + (rule.is_semantic ? 'Semantic' : '')) +
+							'</div>' +
+						'</div>' +
+						'<div class="rule-block"><strong>Permissions</strong>' + renderPermissionChips(rule.permissions) + '</div>' +
+						'<div class="rule-actions">' +
+							'<label class="switch"><input type="checkbox" ' + (rule.enabled ? 'checked' : '') + ' data-toggle="' + rule.id + '" />Toggle</label>' +
+							'<div class="rule-controls">' +
+								'<button class="btn" data-edit="' + rule.id + '">Edit</button>' +
+								'<button class="btn btn-danger" data-delete="' + rule.id + '">Delete</button>' +
+							'</div>' +
+						'</div>' +
+					'</div>';
+
+				list.appendChild(card);
+			});
+
+			list.querySelectorAll('[data-edit]').forEach((button) => {
+				button.addEventListener('click', (event) => {
+					event.preventDefault();
+					const ruleId = Number(event.currentTarget.getAttribute('data-edit'));
+					const rule = state.rules.find((item) => item.id === ruleId);
+					if (rule) {
+						openDrawer(rule);
+					}
+				});
+			});
+
+			list.querySelectorAll('[data-delete]').forEach((button) => {
+				button.addEventListener('click', (event) => {
+					event.preventDefault();
+					const ruleId = Number(event.currentTarget.getAttribute('data-delete'));
+					deleteRule(ruleId);
+				});
+			});
+
+			list.querySelectorAll('[data-toggle]').forEach((input) => {
+				input.addEventListener('change', (event) => {
+					const ruleId = Number(event.currentTarget.getAttribute('data-toggle'));
+					const rule = state.rules.find((item) => item.id === ruleId);
+					if (!rule) {
+						return;
+					}
+					rule.enabled = event.currentTarget.checked;
+					saveRulePayload(rule, true);
+				});
+			});
+		}
+
+		function renderPermissionChips(permissions) {
+			if (!permissions) {
+				return '<span class="muted">No permissions set</span>';
+			}
+			return '<div class="permissions-list">' +
+				PERMISSION_LABELS.map((item) => {
+					const value = permissions[item.key] || 'inherit';
+					const cls = value === 'allow' ? 'perm-allow' : value === 'deny' ? 'perm-deny' : 'perm-inherit';
+					return '<span class="perm-chip ' + cls + '">' + item.label + ': ' + value + '</span>';
+				}).join('') +
+			'</div>';
+		}
+
+		function openDrawer(rule) {
+			editingRuleId = rule ? rule.id : null;
+			document.getElementById('drawer-title').textContent = rule ? 'Edit rule' : 'New rule';
+			document.getElementById('rule-tool').value = rule ? (rule.tools || '*') : '*';
+			document.getElementById('rule-keywords').value = rule ? rule.pattern : '';
+			document.getElementById('rule-action').value = rule ? rule.action : 'block';
+
+			document.body.classList.add('drawer-open');
+			drawer.setAttribute('aria-hidden', 'false');
+		}
+
+		function closeDrawer() {
+			document.body.classList.remove('drawer-open');
+			drawer.setAttribute('aria-hidden', 'true');
+		}
+
+		function saveRulePayload(rule, silent) {
+			const payload = {
+				pattern: rule.pattern,
+				description: rule.description || '',
+				action: rule.action,
+				is_regex: rule.is_regex,
+				is_semantic: rule.is_semantic,
+				tools: rule.tools || '',
+				enabled: rule.enabled,
+				permissions: rule.permissions || DEFAULT_PERMISSIONS[rule.action]
+			};
+
+			return fetchJSON('/api/blocklist?id=' + rule.id, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			})
+				.then(() => {
+					if (!silent) {
+						showToast('Rule updated', 'success');
+					}
+					return loadRules();
+				})
+				.catch((err) => {
+					showToast('Failed to update rule: ' + err.message, 'error');
+				});
+		}
+
+		function deleteRule(ruleId) {
+			if (!confirm('Delete this rule?')) {
+				return;
+			}
+			fetchJSON('/api/blocklist?id=' + ruleId, { method: 'DELETE' })
+				.then(() => {
+					showToast('Rule deleted', 'success');
+					loadRules();
+				})
+				.catch((err) => {
+					showToast('Failed to delete rule: ' + err.message, 'error');
+				});
+		}
+
 		function escapeHTML(text) {
 			const div = document.createElement('div');
 			div.textContent = text;
@@ -1000,13 +1356,73 @@ func getUnifiedDashboardHTML() string {
 				.catch((err) => showToast('Failed to reload servers: ' + err.message, 'error'));
 		});
 
+		document.getElementById('rule-form').addEventListener('submit', (event) => {
+			event.preventDefault();
+			const keywords = document.getElementById('rule-keywords').value.trim();
+			if (!keywords) {
+				showToast('Keywords are required', 'error');
+				return;
+			}
+			const tool = document.getElementById('rule-tool').value;
+			const action = document.getElementById('rule-action').value;
+
+			// Build regex pattern from keywords
+			const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k);
+			const pattern = keywordList.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+
+			const payload = {
+				pattern: pattern,
+				description: 'Block keywords: ' + keywordList.join(', '),
+				action: action,
+				is_regex: true,
+				is_semantic: false,
+				tools: tool === '*' ? '' : tool,
+				enabled: true,
+				permissions: DEFAULT_PERMISSIONS[action] || DEFAULT_PERMISSIONS.block
+			};
+
+			const url = editingRuleId ? '/api/blocklist?id=' + editingRuleId : '/api/blocklist';
+			const method = editingRuleId ? 'PUT' : 'POST';
+
+			fetchJSON(url, {
+				method: method,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			})
+				.then(() => {
+					showToast(editingRuleId ? 'Rule updated' : 'Rule created', 'success');
+					closeDrawer();
+					editingRuleId = null;
+					loadRules();
+				})
+				.catch((err) => {
+					showToast('Failed to save rule: ' + err.message, 'error');
+				});
+		});
+
+		document.getElementById('new-rule').addEventListener('click', () => openDrawer(null));
+		document.getElementById('new-rule-secondary').addEventListener('click', () => openDrawer(null));
+		document.getElementById('close-drawer').addEventListener('click', closeDrawer);
+		overlay.addEventListener('click', closeDrawer);
+
 		document.getElementById('refresh').addEventListener('click', () => {
-			Promise.all([loadStats(), loadServers()])
+			Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadTools()])
 				.then(updateLastRefresh)
 				.catch((err) => showToast('Refresh failed: ' + err.message, 'error'));
 		});
 
-		Promise.all([loadStats(), loadServers()])
+		document.getElementById('rule-search').addEventListener('input', renderRules);
+		document.getElementById('rule-filter').addEventListener('change', renderRules);
+
+		document.getElementById('cancel-rule').addEventListener('click', closeDrawer);
+
+		document.addEventListener('keydown', (event) => {
+			if (event.key === 'Escape') {
+				closeDrawer();
+			}
+		});
+
+		Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadTools()])
 			.then(updateLastRefresh)
 			.catch((err) => showToast('Load failed: ' + err.message, 'error'));
 

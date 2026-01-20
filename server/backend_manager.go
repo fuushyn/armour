@@ -894,6 +894,11 @@ func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *pr
 		bm.logger.Warn("failed to register tools from %s: %v", serverEntry.Name, err)
 	}
 
+	// Persist discovered tools to file for dashboard access
+	if err := bm.toolRegistry.SaveToFile(); err != nil {
+		bm.logger.Debug("failed to persist discovered tools: %v", err)
+	}
+
 	// Store connection
 	bm.mu.Lock()
 	bm.connections[serverEntry.Name] = conn
