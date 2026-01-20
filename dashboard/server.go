@@ -616,13 +616,49 @@ func (ds *Server) handleBlocklistAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleToolsAPI returns list of all tools (native + MCP).
+// First tries to get tools from the rules server, falls back to hardcoded list.
 func (ds *Server) handleToolsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Native tools
+	// Try to get tools from rules server first
+	resp, err := http.Get("http://127.0.0.1:8084/api/tools")
+	if err == nil && resp.StatusCode == 200 {
+		defer resp.Body.Close()
+		var rulesData struct {
+			Native []map[string]interface{} `json:"native"`
+			MCP    []map[string]interface{} `json:"mcp"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&rulesData) == nil {
+			// Convert to unified format
+			allTools := []map[string]interface{}{}
+			for _, t := range rulesData.Native {
+				allTools = append(allTools, map[string]interface{}{
+					"name":        t["name"],
+					"type":        "native",
+					"description": t["description"],
+				})
+			}
+			for _, t := range rulesData.MCP {
+				allTools = append(allTools, map[string]interface{}{
+					"name":        t["name"],
+					"type":        "mcp",
+					"server":      t["name"],
+					"description": t["description"],
+				})
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"tools": allTools,
+				"count": len(allTools),
+			})
+			return
+		}
+	}
+
+	// Fallback: Native tools
 	nativeTools := []map[string]interface{}{
 		{"name": "Bash", "type": "native", "description": "Execute shell commands"},
 		{"name": "Read", "type": "native", "description": "Read files"},
@@ -640,18 +676,16 @@ func (ds *Server) handleToolsAPI(w http.ResponseWriter, r *http.Request) {
 	ds.mu.RLock()
 	if ds.registry != nil {
 		for _, srv := range ds.registry.Servers {
-			// Add server as a tool source - actual tools would require querying the server
 			mcpTools = append(mcpTools, map[string]interface{}{
-				"name":   "mcp__" + srv.Name,
-				"type":   "mcp",
-				"server": srv.Name,
+				"name":        srv.Name,
+				"type":        "mcp",
+				"server":      srv.Name,
 				"description": fmt.Sprintf("MCP server: %s", srv.Name),
 			})
 		}
 	}
 	ds.mu.RUnlock()
 
-	// Combine all tools
 	allTools := append(nativeTools, mcpTools...)
 
 	w.Header().Set("Content-Type", "application/json")
