@@ -1,10 +1,10 @@
 #!/bin/bash
-# Discover plugin MCP servers and add them to ~/.armour/servers.json
-# This enables Armour's stdio MCP server to proxy all discovered plugin servers
+# Discover MCP servers from ~/.claude.json and add them to ~/.armour/servers.json
+# This enables Armour's stdio MCP server to proxy project-level MCP servers
+# Note: Plugin MCP servers are NOT auto-discovered - configure them manually in ~/.armour/servers.json
 
 set -e
 
-PLUGINS_DIR="${HOME}/.claude/plugins"
 ARMOUR_CONFIG_DIR="${HOME}/.armour"
 SERVERS_JSON="${ARMOUR_CONFIG_DIR}/servers.json"
 LOG_FILE="${ARMOUR_CONFIG_DIR}/hooks.log"
@@ -17,7 +17,7 @@ log() {
   echo "$msg" >> "$LOG_FILE" 2>/dev/null || true
 }
 
-log "Starting plugin server discovery..."
+log "Starting MCP server discovery..."
 
 # Ensure config directory exists
 mkdir -p "$ARMOUR_CONFIG_DIR"
@@ -45,14 +45,12 @@ import json
 import os
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
 
-plugins_dir = os.path.expanduser("~/.claude/plugins")
 servers_json = os.path.expanduser("~/.armour/servers.json")
 claude_config = os.path.expanduser("~/.claude.json")
 project_hint = os.environ.get("CLAUDE_PROJECT_ROOT") or os.environ.get("PWD") or os.getcwd()
 
-# Discovered servers
+# Discovered servers (only from ~/.claude.json, NOT from plugins)
 discovered = {}
 
 def register_server(server_name, server_config, source_label, plugin_root=None):
@@ -78,66 +76,6 @@ def register_server(server_name, server_config, source_label, plugin_root=None):
     env.setdefault("CLAUDE_PLUGIN_ROOT", str(plugin_root))
   discovered[server_name] = entry
   print(f"[Armour] Found: {server_name} ({source_label})", file=sys.stderr)
-
-def normalize_remote_transport(remote_type, url):
-  if isinstance(remote_type, str) and remote_type:
-    remote_type = remote_type.lower()
-    if remote_type in ("sse", "http", "stdio"):
-      return remote_type
-  if isinstance(url, str) and url.startswith(("http://", "https://")):
-    return "http"
-  return None
-
-def same_host(left, right):
-  try:
-    return urlparse(left).netloc.lower() == urlparse(right).netloc.lower()
-  except Exception:
-    return False
-
-def apply_remote_override(remote, plugin_name, existing_servers, existing_index, config):
-  remote_url = remote.get("url") if isinstance(remote, dict) else None
-  if not remote_url:
-    return
-
-  for name, entry in list(discovered.items()):
-    if entry.get("url") and same_host(entry["url"], remote_url):
-      transport = normalize_remote_transport(remote.get("type"), remote_url)
-      if transport:
-        entry["transport"] = transport
-      entry["url"] = remote_url
-      return
-
-  # Check existing servers for same-host match before adding new entry
-  for name, entry in existing_servers.items():
-    if entry.get("url") and same_host(entry["url"], remote_url):
-      transport = normalize_remote_transport(remote.get("type"), remote_url)
-      if transport:
-        entry["transport"] = transport
-      entry["url"] = remote_url
-      config["servers"][existing_index[name]] = entry
-      return
-
-  # Fall back: add a new entry if nothing matched
-  name = plugin_name or "remote"
-  if name in discovered or name in existing_servers:
-    return
-  transport = normalize_remote_transport(remote.get("type"), remote_url) or "http"
-  discovered[name] = {"name": name, "transport": transport, "url": remote_url}
-
-def apply_server_json(plugin_root, existing_servers, existing_index, config):
-  server_json = plugin_root / "server.json"
-  if not server_json.is_file():
-    return
-  try:
-    data = json.loads(server_json.read_text())
-  except Exception:
-    return
-  remotes = data.get("remotes") or []
-  if not isinstance(remotes, list):
-    return
-  for remote in remotes:
-    if isinstance(remote, dict):
-      apply_remote_override(remote, plugin_root.name, existing_servers, existing_index, config)
 
 def resolve_mcp_servers(mcp_value, base_dir, source_label):
   if isinstance(mcp_value, dict):
@@ -203,45 +141,6 @@ for idx, server in enumerate(config.get("servers", [])):
 
 # Discover project-level MCP servers from ~/.claude.json
 add_project_mcp_servers()
-
-# Scan plugins directory
-if os.path.isdir(plugins_dir):
-  for root, dirs, files in os.walk(plugins_dir):
-    if os.path.basename(root) == ".claude-plugin":
-      plugin_root = Path(root).parent
-      plugin_dir_name = plugin_root.name
-      # Check marketplace.json
-      if "marketplace.json" in files:
-        try:
-          with open(os.path.join(root, "marketplace.json")) as f:
-            manifest = json.load(f)
-            if "plugins" in manifest:
-              for plugin in manifest["plugins"]:
-                plugin_name = plugin.get("name")
-                if plugin_name and plugin_name != plugin_dir_name:
-                  continue
-                base_dir = plugin_root
-                source = plugin.get("source")
-                if isinstance(source, str) and source and not source.startswith("/") and "://" not in source:
-                  base_dir = (plugin_root / source).resolve()
-                mcp_value = plugin.get("mcpServers")
-                if mcp_value is not None:
-                  resolve_mcp_servers(mcp_value, base_dir, "marketplace")
-                apply_server_json(base_dir, existing_servers, existing_index, config)
-        except Exception:
-          pass
-
-      # Check plugin.json
-      if "plugin.json" in files:
-        try:
-          with open(os.path.join(root, "plugin.json")) as f:
-            manifest = json.load(f)
-            mcp_servers = manifest.get("mcpServers")
-            if mcp_servers is not None:
-              resolve_mcp_servers(mcp_servers, plugin_root, "plugin.json")
-            apply_server_json(plugin_root, existing_servers, existing_index, config)
-        except Exception as e:
-          pass
 
 # Add discovered servers that aren't already there
 added_count = 0
@@ -337,4 +236,4 @@ def disable_servers_in_claude_config():
 disable_servers_in_claude_config()
 PYTHON_EOF
 
-log "[Armour] ✓ Plugin servers discovered and configured"
+log "[Armour] ✓ MCP servers discovered and configured"
