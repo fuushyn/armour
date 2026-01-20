@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type ServerEntry struct {
@@ -61,6 +62,34 @@ func validateRegistry(registry *ServerRegistry) error {
 		if s.Transport == "stdio" && s.Command == "" {
 			return fmt.Errorf("server %s (stdio) missing command", s.Name)
 		}
+	}
+
+	return nil
+}
+
+func SaveServerRegistry(registry *ServerRegistry, configPath string) error {
+	if registry == nil {
+		return fmt.Errorf("registry is nil")
+	}
+	if configPath == "" {
+		return fmt.Errorf("config path required")
+	}
+
+	if err := validateRegistry(registry); err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(registry, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal registry: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
 	return nil

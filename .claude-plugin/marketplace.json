@@ -11,7 +11,7 @@
       "name": "armour",
       "source": "./",
       "description": "Security-enhanced MCP proxy with policy controls and recovery tools",
-      "version": "1.0.4"
+      "version": "1.0.5"
     }
   ]
 }

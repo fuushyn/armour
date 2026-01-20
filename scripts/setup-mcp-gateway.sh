@@ -166,7 +166,7 @@ try:
   # Track discovered servers
   discovered = {}
 
-  def register_server(server_name, server_config, source_label):
+  def register_server(server_name, server_config, source_label, plugin_root=None):
     if not server_name or server_name in existing_servers or server_name in discovered or server_name == "armour":
       return
 
@@ -187,6 +187,13 @@ try:
     if "headers" in server_config and server_config["headers"]:
       entry["headers"] = server_config["headers"]
 
+    if "env" in server_config and server_config["env"]:
+      entry["env"] = server_config["env"]
+
+    if plugin_root:
+      env = entry.setdefault("env", {})
+      env.setdefault("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
     discovered[server_name] = entry
     print(f"[Armour] Discovered: {server_name} from {source_label}", file=sys.stderr)
 
@@ -194,11 +201,11 @@ try:
     if isinstance(mcp_value, dict):
       for name, cfg in mcp_value.items():
         if isinstance(cfg, dict):
-          register_server(name, cfg, source_label)
+          register_server(name, cfg, source_label, base_dir)
     elif isinstance(mcp_value, list):
       for cfg in mcp_value:
         if isinstance(cfg, dict) and "name" in cfg:
-          register_server(cfg["name"], cfg, source_label)
+          register_server(cfg["name"], cfg, source_label, base_dir)
     elif isinstance(mcp_value, str):
       mcp_path = (base_dir / mcp_value).resolve()
       if mcp_path.is_file():

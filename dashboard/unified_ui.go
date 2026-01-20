@@ -299,6 +299,46 @@ func getUnifiedDashboardHTML() string {
 			color: var(--muted);
 		}
 
+		.server-toolbar {
+			display: flex;
+			align-items: flex-start;
+			justify-content: space-between;
+			gap: 12px;
+			flex-wrap: wrap;
+			margin-bottom: 10px;
+		}
+
+		.server-form {
+			margin-top: 4px;
+			padding: 14px 16px;
+			border-radius: 14px;
+			background: rgba(12, 16, 26, 0.7);
+			border: 1px dashed rgba(59, 209, 201, 0.45);
+		}
+
+		.server-form-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			gap: 12px;
+		}
+
+		.server-form-actions {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			margin-top: 12px;
+			flex-wrap: wrap;
+		}
+
+		.small-label {
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.hidden {
+			display: none !important;
+		}
+
 		.badge {
 			display: inline-flex;
 			align-items: center;
@@ -845,6 +885,57 @@ func getUnifiedDashboardHTML() string {
 					<h2 class="section-title">Connected servers</h2>
 					<div class="badge badge-ok" id="server-status">Running</div>
 				</div>
+				<div class="server-toolbar">
+					<div>
+						<div class="small-label">Registry</div>
+						<div class="rule-desc" id="server-config-path">Detecting registry...</div>
+					</div>
+					<div class="rule-controls">
+						<button class="btn btn-primary" type="button" id="server-toggle">Register server</button>
+						<button class="btn btn-ghost" type="button" id="server-refresh">Reload</button>
+					</div>
+				</div>
+				<form class="server-form hidden" id="server-form" autocomplete="off">
+					<div class="server-form-grid">
+						<div class="form-row">
+							<label for="server-name">Name</label>
+							<input class="input" id="server-name" name="server-name" placeholder="docs" required />
+						</div>
+						<div class="form-row">
+							<label for="server-transport">Transport</label>
+							<select class="input" id="server-transport" name="server-transport">
+								<option value="http">HTTP</option>
+								<option value="sse">SSE</option>
+								<option value="stdio">Stdio</option>
+							</select>
+						</div>
+						<div class="form-row" id="server-url-row">
+							<label for="server-url">Endpoint URL</label>
+							<input class="input" id="server-url" name="server-url" type="url" placeholder="http://127.0.0.1:8080/mcp" />
+						</div>
+						<div class="form-row hidden" id="server-command-row">
+							<label for="server-command">Command (stdio)</label>
+							<input class="input" id="server-command" name="server-command" placeholder="node server.js" />
+						</div>
+						<div class="form-row hidden" id="server-args-row">
+							<label for="server-args">Args (optional)</label>
+							<input class="input" id="server-args" name="server-args" placeholder="--flag value" />
+						</div>
+						<div class="form-row hidden" id="server-env-row">
+							<label for="server-env">Env (KEY=VALUE, optional)</label>
+							<textarea class="input textarea" id="server-env" name="server-env" placeholder="API_KEY=...&#10;DEBUG=1"></textarea>
+						</div>
+						<div class="form-row" id="server-headers-row">
+							<label for="server-headers">Headers (JSON, optional)</label>
+							<textarea class="input textarea" id="server-headers" name="server-headers" placeholder='{\"Authorization\":\"Bearer ...\"}'></textarea>
+						</div>
+					</div>
+					<div class="server-form-actions">
+						<button class="btn btn-primary" type="submit">Save server</button>
+						<button class="btn btn-ghost" type="button" id="server-cancel">Cancel</button>
+						<span class="muted" id="server-form-hint">HTTP/SSE use URLs; stdio uses local command + args.</span>
+					</div>
+				</form>
 				<div class="server-list" id="server-list">
 					<div class="empty-state">Loading servers...</div>
 				</div>
@@ -1019,6 +1110,7 @@ func getUnifiedDashboardHTML() string {
 		const state = {
 			rules: [],
 			servers: [],
+			registryPath: '',
 			nativePermissions: { allow: [], ask: [], deny: [] }
 		};
 
@@ -1064,9 +1156,23 @@ func getUnifiedDashboardHTML() string {
 			return fetchJSON('/api/servers')
 				.then((data) => {
 					state.servers = data.servers || [];
+					state.registryPath = data.path || '';
 					document.getElementById('server-count').textContent = state.servers.length;
+					renderRegistryPath();
 					renderServers();
 				});
+		}
+
+		function renderRegistryPath() {
+			const pathEl = document.getElementById('server-config-path');
+			if (!pathEl) {
+				return;
+			}
+			if (state.registryPath) {
+				pathEl.textContent = state.registryPath;
+			} else {
+				pathEl.textContent = 'Not persisted — start proxy with -config to write servers.json';
+			}
 		}
 
 		function renderServers() {
@@ -1074,21 +1180,164 @@ func getUnifiedDashboardHTML() string {
 			container.innerHTML = '';
 
 			if (state.servers.length === 0) {
-				container.innerHTML = '<div class="empty-state">No servers configured yet.</div>';
+				container.innerHTML = '<div class="empty-state">No servers configured yet. Use "Register server" to add one.</div>';
 				return;
 			}
 
 			state.servers.forEach((server) => {
 				const item = document.createElement('div');
 				item.className = 'server-item';
+				const transport = server.transport || 'unknown';
+				const target = transport === 'stdio'
+					? [server.command, ...(server.args || [])].filter(Boolean).join(' ')
+					: (server.url || server.command || '');
+				const summary = transport + ' — ' + (target || 'not configured');
 				item.innerHTML =
 					'<div>' +
 						'<h3>' + escapeHTML(server.name) + '</h3>' +
-						'<p>' + escapeHTML(server.transport) + ' - ' + escapeHTML(server.url || server.command || '') + '</p>' +
-					'</div>' +
-					'<span class="badge badge-ok">active</span>';
-				container.appendChild(item);
+				'<p>' + escapeHTML(summary) + '</p>' +
+			'</div>' +
+			'<span class="badge badge-ok">' + escapeHTML(transport.toUpperCase()) + '</span>';
+			container.appendChild(item);
+		});
+	}
+
+		function updateServerTransportFields() {
+			const transport = document.getElementById('server-transport').value;
+			const isStdio = transport === 'stdio';
+			document.getElementById('server-url-row').classList.toggle('hidden', isStdio);
+			document.getElementById('server-headers-row').classList.toggle('hidden', isStdio);
+			document.getElementById('server-command-row').classList.toggle('hidden', !isStdio);
+			document.getElementById('server-args-row').classList.toggle('hidden', !isStdio);
+			document.getElementById('server-env-row').classList.toggle('hidden', !isStdio);
+		}
+
+		function resetServerForm() {
+			const form = document.getElementById('server-form');
+			if (!form) {
+				return;
+			}
+			form.reset();
+			document.getElementById('server-transport').value = 'http';
+			document.getElementById('server-headers').value = '';
+			document.getElementById('server-env').value = '';
+			document.getElementById('server-args').value = '';
+			document.getElementById('server-command').value = '';
+			document.getElementById('server-url').value = '';
+			updateServerTransportFields();
+		}
+
+		function toggleServerForm(forceOpen) {
+			const form = document.getElementById('server-form');
+			const toggle = document.getElementById('server-toggle');
+			if (!form || !toggle) {
+				return;
+			}
+			const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : form.classList.contains('hidden');
+			form.classList.toggle('hidden', !shouldOpen);
+			toggle.textContent = shouldOpen ? 'Close form' : 'Register server';
+		}
+
+		function parseServerArgs(raw) {
+			if (!raw || !raw.trim()) {
+				return [];
+			}
+			return raw.trim().split(/\s+/);
+		}
+
+		function parseEnvVars(raw) {
+			if (!raw || !raw.trim()) {
+				return undefined;
+			}
+			const env = {};
+			raw.split(/\n+/).forEach((line) => {
+				if (!line.trim()) {
+					return;
+				}
+				const [key, ...rest] = line.split('=');
+				if (!key || rest.length === 0) {
+					throw new Error('Env must be KEY=VALUE per line');
+				}
+				env[key.trim()] = rest.join('=').trim();
 			});
+			return Object.keys(env).length ? env : undefined;
+		}
+
+		function parseHeaderJSON(raw) {
+			if (!raw || !raw.trim()) {
+				return undefined;
+			}
+			return JSON.parse(raw);
+		}
+
+		function submitServerForm(event) {
+			event.preventDefault();
+			const name = document.getElementById('server-name').value.trim();
+			const transport = document.getElementById('server-transport').value;
+			const url = document.getElementById('server-url').value.trim();
+			const command = document.getElementById('server-command').value.trim();
+
+			if (!name) {
+				showToast('Name is required', 'error');
+				return;
+			}
+
+			const payload = { name: name, transport: transport };
+
+			if (transport === 'stdio') {
+				if (!command) {
+					showToast('Command required for stdio servers', 'error');
+					return;
+				}
+				payload.command = command;
+				const args = parseServerArgs(document.getElementById('server-args').value);
+				if (args.length) {
+					payload.args = args;
+				}
+				try {
+					const env = parseEnvVars(document.getElementById('server-env').value);
+					if (env) {
+						payload.env = env;
+					}
+				} catch (err) {
+					showToast(err.message, 'error');
+					return;
+				}
+			} else {
+				if (!url) {
+					showToast('URL is required for HTTP/SSE servers', 'error');
+					return;
+				}
+				payload.url = url;
+				try {
+					const headers = parseHeaderJSON(document.getElementById('server-headers').value);
+					if (headers) {
+						payload.headers = headers;
+					}
+				} catch (err) {
+					showToast('Headers JSON invalid: ' + err.message, 'error');
+					return;
+				}
+			}
+
+			fetchJSON('/api/servers', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			})
+				.then((data) => {
+					state.servers = data.servers || state.servers;
+					state.registryPath = data.path || state.registryPath;
+					document.getElementById('server-count').textContent = state.servers.length;
+					renderServers();
+					renderRegistryPath();
+					resetServerForm();
+					toggleServerForm(false);
+					showToast('Server registered', 'success');
+				})
+				.catch((err) => {
+					showToast('Failed to register server: ' + err.message, 'error');
+				});
 		}
 
 		function loadPolicy() {
@@ -1392,6 +1641,19 @@ func getUnifiedDashboardHTML() string {
 			return div.innerHTML;
 		}
 
+		document.getElementById('server-transport').addEventListener('change', updateServerTransportFields);
+		document.getElementById('server-toggle').addEventListener('click', () => toggleServerForm());
+		document.getElementById('server-cancel').addEventListener('click', () => {
+			resetServerForm();
+			toggleServerForm(false);
+		});
+		document.getElementById('server-refresh').addEventListener('click', () => {
+			loadServers()
+				.then(() => showToast('Servers refreshed', 'success'))
+				.catch((err) => showToast('Failed to reload servers: ' + err.message, 'error'));
+		});
+		document.getElementById('server-form').addEventListener('submit', submitServerForm);
+
 		document.getElementById('rule-form').addEventListener('submit', (event) => {
 			event.preventDefault();
 			const pattern = document.getElementById('rule-pattern').value.trim();
@@ -1497,6 +1759,7 @@ func getUnifiedDashboardHTML() string {
 			}
 		});
 
+		updateServerTransportFields();
 		buildPermissionGrid();
 
 		Promise.all([loadStats(), loadServers(), loadRules(), loadPolicy(), loadNativePermissions()])

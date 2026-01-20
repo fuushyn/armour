@@ -52,7 +52,7 @@ servers_json = os.path.expanduser("~/.armour/servers.json")
 # Discovered servers
 discovered = {}
 
-def register_server(server_name, server_config, source_label):
+def register_server(server_name, server_config, source_label, plugin_root=None):
   if not server_name or server_name == "armour" or server_name in discovered:
     return
   entry = {
@@ -68,6 +68,11 @@ def register_server(server_name, server_config, source_label):
     entry["args"] = server_config["args"]
   if "headers" in server_config and server_config["headers"]:
     entry["headers"] = server_config["headers"]
+  if "env" in server_config and server_config["env"]:
+    entry["env"] = server_config["env"]
+  if plugin_root:
+    env = entry.setdefault("env", {})
+    env.setdefault("CLAUDE_PLUGIN_ROOT", str(plugin_root))
   discovered[server_name] = entry
   print(f"[Armour] Found: {server_name} ({source_label})", file=sys.stderr)
 
@@ -75,11 +80,11 @@ def resolve_mcp_servers(mcp_value, base_dir, source_label):
   if isinstance(mcp_value, dict):
     for server_name, server_config in mcp_value.items():
       if isinstance(server_config, dict):
-        register_server(server_name, server_config, source_label)
+        register_server(server_name, server_config, source_label, base_dir)
   elif isinstance(mcp_value, list):
     for server_config in mcp_value:
       if isinstance(server_config, dict) and "name" in server_config:
-        register_server(server_config["name"], server_config, source_label)
+        register_server(server_config["name"], server_config, source_label, base_dir)
   elif isinstance(mcp_value, str):
     mcp_path = (base_dir / mcp_value).resolve()
     if mcp_path.is_file():

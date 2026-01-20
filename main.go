@@ -123,7 +123,7 @@ func runStdioMode(ctx context.Context, config server.Config) error {
 	// 2. Start Dashboard (Dual-Head)
 	// Bind to localhost for security, hardcoded port for now (as per architecture)
 	dashboardAddr := "127.0.0.1:13337"
-	dashboardSrv := dashboard.NewDashboardServer(dashboardAddr, registry, statsTracker, policyManager, stdioSrv.GetBlocklist(), stdioSrv.GetDB(), logger)
+	dashboardSrv := dashboard.NewDashboardServer(dashboardAddr, registry, config.ConfigPath, statsTracker, policyManager, stdioSrv.GetBlocklist(), stdioSrv.GetDB(), logger)
 
 	if err := dashboardSrv.Start(); err != nil {
 		log.Printf("Warning: failed to start dashboard: %v", err)

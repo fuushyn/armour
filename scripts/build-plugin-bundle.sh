@@ -19,6 +19,7 @@ echo "Building armour binary for ${GOOS}/${GOARCH}..."
 cp "${ROOT_DIR}/.claude-plugin/plugin.json" "${PLUGIN_DIR}/.claude-plugin/plugin.json"
 cp "${ROOT_DIR}/.claude-plugin/marketplace.json" "${PLUGIN_DIR}/.claude-plugin/marketplace.json"
 cp -R "${ROOT_DIR}/commands" "${PLUGIN_DIR}/commands"
+cp -R "${ROOT_DIR}/scripts" "${PLUGIN_DIR}/scripts"
 cp -R "${ROOT_DIR}/hooks" "${PLUGIN_DIR}/hooks"
 cp "${ROOT_DIR}/README.md" "${PLUGIN_DIR}/README.md"
 if [ -f "${ROOT_DIR}/LICENSE" ]; then

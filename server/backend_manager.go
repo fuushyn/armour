@@ -198,6 +198,7 @@ func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServe
 	}
 
 	var servers []proxy.ServerEntry
+	pluginRoot := filepath.Dir(filepath.Dir(pluginJSONPath))
 
 	// Process each MCP server declared in the plugin
 	switch mcpServers := pluginManifest.MCPServers.(type) {
@@ -208,7 +209,7 @@ func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServe
 				bm.logger.Debug("plugin %s: MCP server '%s' has invalid config shape", pluginManifest.Name, serverName)
 				continue
 			}
-			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers)...)
+			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers, pluginRoot)...)
 		}
 	case []interface{}:
 		for _, serverRaw := range mcpServers {
@@ -222,11 +223,10 @@ func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServe
 				bm.logger.Debug("plugin %s: MCP server missing 'name' field, skipping", pluginManifest.Name)
 				continue
 			}
-			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers)...)
+			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers, pluginRoot)...)
 		}
 	case string:
-		pluginDir := filepath.Dir(filepath.Dir(pluginJSONPath))
-		mcpPath := filepath.Join(pluginDir, mcpServers)
+		mcpPath := filepath.Join(pluginRoot, mcpServers)
 		data, err := os.ReadFile(mcpPath)
 		if err != nil {
 			bm.logger.Debug("failed to read mcpServers path %s: %v", mcpPath, err)
@@ -245,7 +245,7 @@ func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServe
 				bm.logger.Debug("plugin %s: MCP server '%s' has invalid config shape", pluginManifest.Name, serverName)
 				continue
 			}
-			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers)...)
+			servers = append(servers, bm.buildServerEntry(pluginManifest.Name, serverName, serverConfig, seenServers, pluginRoot)...)
 		}
 	default:
 		return nil // Plugin doesn't provide MCP servers
@@ -254,7 +254,7 @@ func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServe
 	return servers
 }
 
-func (bm *BackendManager) buildServerEntry(pluginName string, serverName string, serverConfig map[string]interface{}, seenServers map[string]bool) []proxy.ServerEntry {
+func (bm *BackendManager) buildServerEntry(pluginName string, serverName string, serverConfig map[string]interface{}, seenServers map[string]bool, pluginRoot string) []proxy.ServerEntry {
 	if serverName == "" {
 		bm.logger.Debug("plugin %s: MCP server missing name, skipping", pluginName)
 		return nil
@@ -275,7 +275,7 @@ func (bm *BackendManager) buildServerEntry(pluginName string, serverName string,
 	seenServers[serverName] = true
 
 	// Convert plugin server config to ServerEntry
-	entry := bm.convertPluginMCPServerToEntry(serverName, serverConfig)
+	entry := bm.convertPluginMCPServerToEntry(serverName, serverConfig, pluginName, pluginRoot)
 	if entry != nil {
 		bm.logger.Debug("discovered MCP server '%s' from plugin '%s' (%s)",
 			serverName, pluginName, entry.Transport)
@@ -285,7 +285,7 @@ func (bm *BackendManager) buildServerEntry(pluginName string, serverName string,
 }
 
 // convertPluginMCPServerToEntry converts a plugin's MCP server declaration to a ServerEntry
-func (bm *BackendManager) convertPluginMCPServerToEntry(serverName string, config map[string]interface{}) *proxy.ServerEntry {
+func (bm *BackendManager) convertPluginMCPServerToEntry(serverName string, config map[string]interface{}, pluginName string, pluginRoot string) *proxy.ServerEntry {
 	entry := &proxy.ServerEntry{
 		Name: serverName,
 	}
@@ -366,6 +366,8 @@ func (bm *BackendManager) convertPluginMCPServerToEntry(serverName string, confi
 		}
 	}
 
+	applyPluginContext(entry, pluginName, pluginRoot)
+
 	return entry
 }
 
@@ -419,7 +421,7 @@ func (bm *BackendManager) parseMarketplacePluginMCPServers(marketplaceJSONPath s
 					bm.logger.Debug("marketplace plugin %s: MCP server '%s' has invalid config shape", plugin.Name, serverName)
 					continue
 				}
-				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers)...)
+				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers, baseDir)...)
 			}
 		case []interface{}:
 			for _, serverRaw := range mcpServers {
@@ -433,7 +435,7 @@ func (bm *BackendManager) parseMarketplacePluginMCPServers(marketplaceJSONPath s
 					bm.logger.Debug("marketplace plugin %s: MCP server missing 'name' field, skipping", plugin.Name)
 					continue
 				}
-				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers)...)
+				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers, baseDir)...)
 			}
 		case string:
 			mcpPath := filepath.Join(baseDir, mcpServers)
@@ -455,7 +457,7 @@ func (bm *BackendManager) parseMarketplacePluginMCPServers(marketplaceJSONPath s
 					bm.logger.Debug("marketplace plugin %s: MCP server '%s' has invalid config shape", plugin.Name, serverName)
 					continue
 				}
-				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers)...)
+				servers = append(servers, bm.buildServerEntry(plugin.Name, serverName, serverConfig, seenServers, baseDir)...)
 			}
 		default:
 			bm.logger.Debug("marketplace plugin %s: unsupported mcpServers format", plugin.Name)
@@ -545,6 +547,8 @@ type BackendManager struct {
 	initializationOnce sync.Once
 }
 
+const backendInitTimeout = 8 * time.Second
+
 // NewBackendManager creates a new backend manager.
 func NewBackendManager(registry *proxy.ServerRegistry, logger *proxy.Logger, toolRegistry *ToolRegistry) *BackendManager {
 	return &BackendManager{
@@ -566,29 +570,50 @@ func (bm *BackendManager) Initialize(ctx context.Context) error {
 	})
 
 	bm.mu.Lock()
-	defer bm.mu.Unlock()
-
 	// First, discover and merge plugin MCP servers with configured servers
 	bm.discoverAndMergePluginServers()
 
 	if bm.registry == nil || len(bm.registry.Servers) == 0 {
+		bm.mu.Unlock()
 		bm.logger.Debug("no backend servers configured in registry, operating with empty backend list")
 		bm.logger.Debug("use proxy:detect-servers and proxy:migrate-config tools to add servers")
 		return nil
 	}
 
-	var initErrors []error
+	servers := make([]proxy.ServerEntry, len(bm.registry.Servers))
+	copy(servers, bm.registry.Servers)
+	bm.mu.Unlock()
 
-	for i := range bm.registry.Servers {
-		if err := bm.initializeBackend(ctx, &bm.registry.Servers[i]); err != nil {
-			bm.logger.Error("failed to initialize backend %s: %v", bm.registry.Servers[i].Name, err)
-			initErrors = append(initErrors, err)
-		}
+	var initErrors []error
+	var initErrMu sync.Mutex
+	var wg sync.WaitGroup
+
+	for i := range servers {
+		entry := servers[i]
+		wg.Add(1)
+		go func(serverEntry proxy.ServerEntry) {
+			defer wg.Done()
+			initCtx, cancel := context.WithTimeout(ctx, backendInitTimeout)
+			defer cancel()
+
+			if err := bm.initializeBackend(initCtx, &serverEntry); err != nil {
+				bm.logger.Error("failed to initialize backend %s: %v", serverEntry.Name, err)
+				initErrMu.Lock()
+				initErrors = append(initErrors, err)
+				initErrMu.Unlock()
+			}
+		}(entry)
 	}
 
+	wg.Wait()
+
+	bm.mu.RLock()
+	initialized := len(bm.connections)
+	bm.mu.RUnlock()
+
 	// If we initialized at least one backend, consider it a success
-	if len(bm.connections) > 0 {
-		bm.logger.Info("initialized %d backend servers", len(bm.connections))
+	if initialized > 0 {
+		bm.logger.Info("initialized %d backend servers", initialized)
 		return nil
 	}
 
@@ -612,8 +637,34 @@ func (bm *BackendManager) WaitForInitialization(ctx context.Context, timeout tim
 	}
 }
 
+// WaitForAnyBackend waits for at least one backend to initialize, or times out.
+func (bm *BackendManager) WaitForAnyBackend(ctx context.Context, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		bm.mu.RLock()
+		ready := len(bm.connections) > 0
+		bm.mu.RUnlock()
+
+		if ready {
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 // initializeBackend initializes a single backend server.
 func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *proxy.ServerEntry) error {
+	expandServerEntry(serverEntry)
 	bm.logger.Debug("initializing backend: %s (%s)", serverEntry.Name, serverEntry.Transport)
 
 	// Create transport based on server configuration
@@ -702,7 +753,9 @@ func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *pr
 	}
 
 	// Store connection
+	bm.mu.Lock()
 	bm.connections[serverEntry.Name] = conn
+	bm.mu.Unlock()
 
 	return nil
 }

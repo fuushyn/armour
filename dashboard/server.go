@@ -21,6 +21,7 @@ type Server struct {
 	listenAddr string
 	httpServer *http.Server
 	listener   net.Listener
+	configPath string
 
 	// References to proxy components
 	registry      *proxy.ServerRegistry
@@ -37,6 +38,7 @@ type Server struct {
 func NewDashboardServer(
 	listenAddr string,
 	registry *proxy.ServerRegistry,
+	configPath string,
 	statsTracker *server.StatsTracker,
 	policyManager *server.PolicyManager,
 	blocklist *server.BlocklistMiddleware,
@@ -46,6 +48,7 @@ func NewDashboardServer(
 	ds := &Server{
 		listenAddr:    listenAddr,
 		registry:      registry,
+		configPath:    configPath,
 		statsTracker:  statsTracker,
 		policyManager: policyManager,
 		blocklist:     blocklist,
@@ -110,24 +113,124 @@ func (ds *Server) Stop() error {
 
 // API Handlers
 
-// handleServersAPI lists all configured servers.
+// handleServersAPI lists all configured servers and registers new ones.
 func (ds *Server) handleServersAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		ds.handleListServers(w)
+	case http.MethodPost:
+		ds.handleRegisterServer(w, r)
+	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
+}
 
+func (ds *Server) handleListServers(w http.ResponseWriter) {
 	ds.mu.RLock()
-	servers := ds.registry.Servers
+	var servers []proxy.ServerEntry
+	if ds.registry != nil {
+		servers = append([]proxy.ServerEntry{}, ds.registry.Servers...)
+	}
 	ds.mu.RUnlock()
 
 	response := map[string]interface{}{
 		"count":   len(servers),
 		"servers": servers,
+		"path":    ds.configPath,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+func (ds *Server) handleRegisterServer(w http.ResponseWriter, r *http.Request) {
+	if ds.configPath == "" {
+		http.Error(w, "Server registration unavailable: start proxy with -config to persist servers.json", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Name      string            `json:"name"`
+		Transport string            `json:"transport"`
+		URL       string            `json:"url"`
+		Command   string            `json:"command"`
+		Args      []string          `json:"args"`
+		Env       map[string]string `json:"env"`
+		Headers   map[string]string `json:"headers"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		http.Error(w, "Server name required", http.StatusBadRequest)
+		return
+	}
+
+	transport := strings.ToLower(strings.TrimSpace(req.Transport))
+	switch transport {
+	case "http", "sse":
+		if strings.TrimSpace(req.URL) == "" {
+			http.Error(w, "URL required for http/sse servers", http.StatusBadRequest)
+			return
+		}
+	case "stdio":
+		if strings.TrimSpace(req.Command) == "" {
+			http.Error(w, "Command required for stdio servers", http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, "Transport must be http, stdio, or sse", http.StatusBadRequest)
+		return
+	}
+
+	entry := proxy.ServerEntry{
+		Name:      name,
+		Transport: transport,
+		URL:       strings.TrimSpace(req.URL),
+		Command:   strings.TrimSpace(req.Command),
+		Args:      req.Args,
+		Env:       req.Env,
+		Headers:   req.Headers,
+	}
+
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.registry == nil {
+		ds.registry = &proxy.ServerRegistry{}
+	}
+
+	for _, existing := range ds.registry.Servers {
+		if strings.EqualFold(existing.Name, entry.Name) {
+			http.Error(w, "Server name already exists", http.StatusConflict)
+			return
+		}
+	}
+
+	updatedServers := append([]proxy.ServerEntry{}, ds.registry.Servers...)
+	updatedServers = append(updatedServers, entry)
+
+	if err := proxy.SaveServerRegistry(&proxy.ServerRegistry{Servers: updatedServers}, ds.configPath); err != nil {
+		ds.logger.Error("failed to save server registry: %v", err)
+		http.Error(w, "Failed to save server registry", http.StatusInternalServerError)
+		return
+	}
+
+	ds.registry.Servers = updatedServers
+	ds.logger.Info("registered new MCP server: %s (%s)", entry.Name, entry.Transport)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"server":  entry,
+		"count":   len(updatedServers),
+		"servers": updatedServers,
+		"path":    ds.configPath,
+	})
 }
 
 // handleServerDetailAPI handles individual server details and actions.
