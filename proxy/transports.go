@@ -97,7 +97,8 @@ func (s *SSETransport) Connect() error {
 	// Set MCP protocol headers
 	req.Header.Set(HeaderProtocolVersion, MCPProtocolVersion)
 	req.Header.Set(HeaderSessionID, s.sessionID)
-	req.Header.Set("Accept", "text/event-stream")
+	// Some servers require clients to accept both JSON and SSE content types
+	req.Header.Set("Accept", "application/json, text/event-stream")
 
 	if s.lastEventID > 0 {
 		req.Header.Set("Last-Event-ID", strconv.Itoa(s.lastEventID))
