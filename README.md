@@ -105,6 +105,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - 📖 [Documentation](https://github.com/fuushyn/armour)
 - 🐛 [Report Issues](https://github.com/fuushyn/armour/issues)
 - 💬 [Discussions](https://github.com/fuushyn/armour/discussions)
+- 📚 [Claude Code LLMs](https://code.claude.com/docs/llms.txt)
+- 📚 [MCP LLMs](https://modelcontextprotocol.io/llms.txt)
 
 ---
 
