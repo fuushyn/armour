@@ -43,6 +43,36 @@ Use `ARMOUR_MARKETPLACE_SOURCE` to fall back to a Git marketplace (for example, 
 
 That's it! All your MCP servers now route through Armour with security policies applied.
 
+## Release steps
+
+1. Bump versions:
+   ```bash
+   VERSION="v1.0.6"
+   sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION#v}\"/" .claude-plugin/plugin.json
+   sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION#v}\"/" .claude-plugin/marketplace.json
+   ```
+2. Build the bundle:
+   ```bash
+   scripts/build-plugin-bundle.sh
+   ```
+3. Commit and push:
+   ```bash
+   git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
+   git commit -m "Release ${VERSION}"
+   git push
+   ```
+4. Create the GitHub release:
+   ```bash
+   gh release create "${VERSION}" "dist/armour-plugin-$(go env GOOS)-$(go env GOARCH).tar.gz" \
+     -t "${VERSION}" \
+     -n "- Release ${VERSION}"
+   ```
+5. Smoke-test the curl installer:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/scripts/install-armour.sh | bash
+   ```
+   Restart Claude Code.
+
 ## Features
 
 - **🔒 Security Policies**: Choose from strict, moderate, or permissive policies

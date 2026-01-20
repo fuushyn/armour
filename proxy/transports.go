@@ -200,7 +200,7 @@ func (s *SSETransport) SendMessage(msg []byte) error {
 		req.Header.Set(HeaderSessionID, sessionID)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Accept", "application/json")
 
 	// Set custom headers (e.g., API keys)
 	for key, value := range headers {

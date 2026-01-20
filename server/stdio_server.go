@@ -156,6 +156,9 @@ func (s *StdioServer) Run(ctx context.Context) error {
 
 		// Route to appropriate handler
 		response := s.handleRequest(ctx, request)
+		if response == nil {
+			continue
+		}
 		if err := s.encoder.Encode(response); err != nil {
 			s.logger.Error("failed to encode response: %v", err)
 			return err
