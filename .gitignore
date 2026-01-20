@@ -18,7 +18,6 @@ dist/
 .DS_Store
 
 # Go
-go.sum
 vendor/
 
 # Logs
