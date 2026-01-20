@@ -995,14 +995,15 @@ func (bc *BackendConnection) getTools(ctx context.Context) error {
 	}
 
 	if err := json.Unmarshal(respBytes, &toolsResp); err != nil {
-		return fmt.Errorf("failed to parse tools/list response: %v", err)
+		return fmt.Errorf("failed to parse tools/list response for %s: %v", bc.config.Name, err)
 	}
 
 	if toolsResp.Error != nil {
-		return fmt.Errorf("backend returned error: %s", toolsResp.Error.Message)
+		return fmt.Errorf("backend %s returned error: %s", bc.config.Name, toolsResp.Error.Message)
 	}
 
 	bc.tools = toolsResp.Result.Tools
+	bc.logger.Debug("backend %s registered %d tool(s)", bc.config.Name, len(bc.tools))
 	return nil
 }
 
