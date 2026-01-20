@@ -908,7 +908,7 @@ func (ds *Server) handleHealthAPI(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]interface{}{
 		"status":  "ok",
-		"version": "1.0.16",
+		"version": "1.0.17",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
