@@ -550,8 +550,10 @@ func (bm *BackendManager) discoverAndMergePluginServers() {
 
 	// Track which server names we already have (to avoid duplicates)
 	existingNames := make(map[string]bool)
-	for _, srv := range bm.registry.Servers {
+	existingIndex := make(map[string]int)
+	for i, srv := range bm.registry.Servers {
 		existingNames[srv.Name] = true
+		existingIndex[srv.Name] = i
 	}
 
 	// Add discovered config servers that aren't already in registry
@@ -568,7 +570,30 @@ func (bm *BackendManager) discoverAndMergePluginServers() {
 		if !existingNames[srv.Name] {
 			bm.registry.Servers = append(bm.registry.Servers, srv)
 			existingNames[srv.Name] = true
+			existingIndex[srv.Name] = len(bm.registry.Servers) - 1
 			bm.logger.Debug("added discovered server from plugin: %s (%s)", srv.Name, srv.Transport)
+			continue
+		}
+
+		// Prefer plugin metadata if it provides a more specific transport/URL.
+		existing := &bm.registry.Servers[existingIndex[srv.Name]]
+		updated := false
+		if srv.Transport != "" && existing.Transport != srv.Transport {
+			existing.Transport = srv.Transport
+			updated = true
+		}
+		if srv.URL != "" && existing.URL != srv.URL {
+			existing.URL = srv.URL
+			updated = true
+		}
+		if srv.Command != "" && existing.Command != srv.Command {
+			existing.Command = srv.Command
+			existing.Args = srv.Args
+			existing.Env = srv.Env
+			updated = true
+		}
+		if updated {
+			bm.logger.Debug("updated server from plugin metadata: %s (%s)", srv.Name, srv.Transport)
 		}
 	}
 

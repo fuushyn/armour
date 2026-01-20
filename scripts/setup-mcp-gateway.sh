@@ -163,6 +163,7 @@ try:
     config = json.load(f)
 
   existing_servers = {s["name"]: s for s in config.get("servers", [])}
+  existing_index = {s["name"]: idx for idx, s in enumerate(config.get("servers", [])) if s.get("name")}
 
   # Track discovered servers
   discovered = {}
@@ -282,15 +283,14 @@ try:
                   plugin_name = plugin.get("name")
                   if plugin_name and plugin_name != plugin_dir_name:
                     continue
-                  mcp_value = plugin.get("mcpServers")
-                  if mcp_value is None:
-                    continue
                   base_dir = plugin_root
                   source = plugin.get("source")
                   if isinstance(source, str) and source and not source.startswith("/") and "://" not in source:
                     base_dir = (plugin_root / source).resolve()
-                  resolve_mcp_servers(mcp_value, base_dir, "marketplace")
-              apply_server_json(base_dir)
+                  mcp_value = plugin.get("mcpServers")
+                  if mcp_value is not None:
+                    resolve_mcp_servers(mcp_value, base_dir, "marketplace")
+                  apply_server_json(base_dir)
             except:
               pass
 
@@ -308,7 +308,9 @@ try:
   # Add discovered servers to existing ones
   if discovered:
     for server_name, server_config in discovered.items():
-      if server_name not in existing_servers:
+      if server_name in existing_index:
+        config["servers"][existing_index[server_name]] = server_config
+      else:
         config["servers"].append(server_config)
 
     # Write back servers.json

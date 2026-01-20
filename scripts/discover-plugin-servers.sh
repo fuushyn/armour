@@ -162,15 +162,14 @@ if os.path.isdir(plugins_dir):
                 plugin_name = plugin.get("name")
                 if plugin_name and plugin_name != plugin_dir_name:
                   continue
-                mcp_value = plugin.get("mcpServers")
-                if mcp_value is None:
-                  continue
                 base_dir = plugin_root
                 source = plugin.get("source")
                 if isinstance(source, str) and source and not source.startswith("/") and "://" not in source:
                   base_dir = (plugin_root / source).resolve()
-                resolve_mcp_servers(mcp_value, base_dir, "marketplace")
-        apply_server_json(base_dir)
+                mcp_value = plugin.get("mcpServers")
+                if mcp_value is not None:
+                  resolve_mcp_servers(mcp_value, base_dir, "marketplace")
+                apply_server_json(base_dir)
         except Exception:
           pass
 
@@ -182,7 +181,7 @@ if os.path.isdir(plugins_dir):
             mcp_servers = manifest.get("mcpServers")
             if mcp_servers is not None:
               resolve_mcp_servers(mcp_servers, plugin_root, "plugin.json")
-        apply_server_json(plugin_root)
+            apply_server_json(plugin_root)
         except Exception as e:
           pass
 
@@ -194,15 +193,20 @@ except Exception as e:
   print(f"[Armour] Error reading servers.json: {e}", file=sys.stderr)
   sys.exit(1)
 
-# Get existing server names
-existing_names = {s.get("name") for s in config.get("servers", [])}
+# Get existing server names and indices
+existing_index = {}
+for idx, server in enumerate(config.get("servers", [])):
+  name = server.get("name")
+  if name:
+    existing_index[name] = idx
 
 # Add discovered servers that aren't already there
 added_count = 0
 for server_name, server_config in discovered.items():
-  if server_name not in existing_names:
+  if server_name in existing_index:
+    config["servers"][existing_index[server_name]] = server_config
+  else:
     config["servers"].append(server_config)
-    existing_names.add(server_name)
     added_count += 1
 
 # Write back servers.json
