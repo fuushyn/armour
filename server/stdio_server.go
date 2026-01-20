@@ -283,10 +283,9 @@ func (s *StdioServer) handleToolsList(ctx context.Context, request JSONRPCReques
 		}
 	}
 
-	// Wait for at least one backend to be ready (up to 5 seconds)
-	if s.toolRegistry.ToolCount() == 0 {
-		s.backendManager.WaitForAnyBackend(ctx, 5*time.Second)
-	}
+	// Wait for backend initialization to complete (up to 5 seconds)
+	// This ensures all backends have a chance to register their tools
+	s.backendManager.WaitForInitialization(ctx, 5*time.Second)
 
 	tools := s.toolRegistry.ListAllTools()
 
