@@ -68,7 +68,6 @@ jobs:
 
           gh release create "${TAG}" dist/*.tar.gz \
             --title "${TAG}" \
-            --prerelease \
             --notes "## Armour ${TAG}
 
           ### Installation
@@ -99,5 +98,5 @@ jobs:
             echo "- Status: Skipped (release already exists)" >> $GITHUB_STEP_SUMMARY
           else
             echo "- Snapshot: ${{ steps.version_check.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-            echo "- Status: Release created successfully (prerelease)" >> $GITHUB_STEP_SUMMARY
+            echo "- Status: Release created successfully" >> $GITHUB_STEP_SUMMARY
           fi
