@@ -109,6 +109,9 @@ func NewInitRequest(clientName, clientVersion string) InitRequest {
 				Sampling: &SamplingCapability{
 					Tools: false,
 				},
+				Tools: &ToolsCapability{
+					ListChanged: false,
+				},
 				ListChanged: false,
 				Subscribe:   false,
 				Logging:     false,

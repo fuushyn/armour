@@ -251,6 +251,35 @@ func (bm *BackendManager) parsePluginMCPServers(pluginJSONPath string, seenServe
 		return nil // Plugin doesn't provide MCP servers
 	}
 
+	if remotes := parseServerJSONRemotes(pluginRoot); len(remotes) > 0 {
+		switch {
+		case len(servers) == 1 && len(remotes) >= 1:
+			applyRemoteOverride(&servers[0], remotes[0])
+		case len(servers) > 1 && len(remotes) >= 1:
+			for i := range servers {
+				if sameHost(servers[i].URL, remotes[0].URL) {
+					applyRemoteOverride(&servers[i], remotes[0])
+					break
+				}
+			}
+		case len(servers) == 0:
+			for idx, remote := range remotes {
+				name := pluginManifest.Name
+				if name == "" {
+					name = fmt.Sprintf("remote-%d", idx+1)
+				} else if idx > 0 {
+					name = fmt.Sprintf("%s-%d", name, idx+1)
+				}
+				if seenServers[name] {
+					continue
+				}
+				entry := proxy.ServerEntry{Name: name, Transport: normalizeRemoteTransport(remote), URL: remote.URL}
+				servers = append(servers, entry)
+				seenServers[name] = true
+			}
+		}
+	}
+
 	return servers
 }
 
@@ -402,6 +431,7 @@ func (bm *BackendManager) parseMarketplacePluginMCPServers(marketplaceJSONPath s
 			continue
 		}
 
+		startIdx := len(servers)
 		baseDir := pluginRoot
 		if sourcePath, ok := plugin.Source.(string); ok {
 			if sourcePath != "" && !filepath.IsAbs(sourcePath) && !strings.Contains(sourcePath, "://") {
@@ -461,6 +491,37 @@ func (bm *BackendManager) parseMarketplacePluginMCPServers(marketplaceJSONPath s
 			}
 		default:
 			bm.logger.Debug("marketplace plugin %s: unsupported mcpServers format", plugin.Name)
+		}
+
+		pluginServers := servers[startIdx:]
+		if remotes := parseServerJSONRemotes(baseDir); len(remotes) > 0 {
+			switch {
+			case len(pluginServers) == 1 && len(remotes) >= 1:
+				applyRemoteOverride(&pluginServers[0], remotes[0])
+			case len(pluginServers) > 1 && len(remotes) >= 1:
+				for i := range pluginServers {
+					if sameHost(pluginServers[i].URL, remotes[0].URL) {
+						applyRemoteOverride(&pluginServers[i], remotes[0])
+						break
+					}
+				}
+			case len(pluginServers) == 0:
+				for idx, remote := range remotes {
+					name := plugin.Name
+					if name == "" {
+						name = pluginDirName
+					}
+					if idx > 0 {
+						name = fmt.Sprintf("%s-%d", name, idx+1)
+					}
+					if seenServers[name] {
+						continue
+					}
+					entry := proxy.ServerEntry{Name: name, Transport: normalizeRemoteTransport(remote), URL: remote.URL}
+					servers = append(servers, entry)
+					seenServers[name] = true
+				}
+			}
 		}
 	}
 

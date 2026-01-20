@@ -45,6 +45,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 plugins_dir = os.path.expanduser("~/.claude/plugins")
 servers_json = os.path.expanduser("~/.armour/servers.json")
@@ -75,6 +76,56 @@ def register_server(server_name, server_config, source_label, plugin_root=None):
     env.setdefault("CLAUDE_PLUGIN_ROOT", str(plugin_root))
   discovered[server_name] = entry
   print(f"[Armour] Found: {server_name} ({source_label})", file=sys.stderr)
+
+def normalize_remote_transport(remote_type, url):
+  if isinstance(remote_type, str) and remote_type:
+    remote_type = remote_type.lower()
+    if remote_type in ("sse", "http", "stdio"):
+      return remote_type
+  if isinstance(url, str) and url.startswith(("http://", "https://")):
+    return "http"
+  return None
+
+def same_host(left, right):
+  try:
+    return urlparse(left).netloc.lower() == urlparse(right).netloc.lower()
+  except Exception:
+    return False
+
+def apply_remote_override(remote, plugin_name):
+  remote_url = remote.get("url") if isinstance(remote, dict) else None
+  if not remote_url:
+    return
+
+  for name, entry in list(discovered.items()):
+    if entry.get("url") and same_host(entry["url"], remote_url):
+      transport = normalize_remote_transport(remote.get("type"), remote_url)
+      if transport:
+        entry["transport"] = transport
+      entry["url"] = remote_url
+      return
+
+  # Fall back: add a new entry if nothing matched
+  name = plugin_name or "remote"
+  if name in discovered:
+    return
+  transport = normalize_remote_transport(remote.get("type"), remote_url) or "http"
+  discovered[name] = {"name": name, "transport": transport, "url": remote_url}
+
+def apply_server_json(plugin_root):
+  server_json = plugin_root / "server.json"
+  if not server_json.is_file():
+    return
+  try:
+    data = json.loads(server_json.read_text())
+  except Exception:
+    return
+  remotes = data.get("remotes") or []
+  if not isinstance(remotes, list):
+    return
+  for remote in remotes:
+    if isinstance(remote, dict):
+      apply_remote_override(remote, plugin_root.name)
 
 def resolve_mcp_servers(mcp_value, base_dir, source_label):
   if isinstance(mcp_value, dict):
@@ -119,6 +170,7 @@ if os.path.isdir(plugins_dir):
                 if isinstance(source, str) and source and not source.startswith("/") and "://" not in source:
                   base_dir = (plugin_root / source).resolve()
                 resolve_mcp_servers(mcp_value, base_dir, "marketplace")
+        apply_server_json(base_dir)
         except Exception:
           pass
 
@@ -130,6 +182,7 @@ if os.path.isdir(plugins_dir):
             mcp_servers = manifest.get("mcpServers")
             if mcp_servers is not None:
               resolve_mcp_servers(mcp_servers, plugin_root, "plugin.json")
+        apply_server_json(plugin_root)
         except Exception as e:
           pass
 
