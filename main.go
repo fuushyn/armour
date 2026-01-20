@@ -41,7 +41,7 @@ func main() {
 			handleRecoverCommand()
 			return
 		case "version":
-			fmt.Println("mcp-proxy v1.0.13")
+			fmt.Println("mcp-proxy v1.0.14")
 			return
 		case "help":
 			printHelp()
@@ -329,7 +329,7 @@ func handleRecoverCommand() {
 
 func printHelp() {
 	fmt.Print(`
-MCP Go Proxy v1.0.13
+MCP Go Proxy v1.0.14
 
 USAGE:
   mcp-proxy [FLAGS] [COMMAND]

@@ -12,13 +12,13 @@ func TestElicitationBasic(t *testing.T) {
 	proxy := NewProxy(db)
 	em := NewElicitationManager()
 
-	clientReq := NewInitRequest("TestClient", "1.0.13")
+	clientReq := NewInitRequest("TestClient", "1.0.14")
 	clientReq.Params.Capabilities.Elicitation = &ElicitationCapability{Enabled: true}
 
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.13",
+			Version: "1.0.14",
 		},
 		Capabilities: Capabilities{
 			Elicitation: &ElicitationCapability{Enabled: true},
@@ -42,13 +42,13 @@ func TestElicitationBlocked(t *testing.T) {
 	proxy := NewProxy(db)
 	em := NewElicitationManager()
 
-	clientReq := NewInitRequest("TestClient", "1.0.13")
+	clientReq := NewInitRequest("TestClient", "1.0.14")
 	clientReq.Params.Capabilities.Elicitation = &ElicitationCapability{Enabled: true}
 
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.13",
+			Version: "1.0.14",
 		},
 		Capabilities: Capabilities{
 			Elicitation: &ElicitationCapability{Enabled: true},
@@ -72,13 +72,13 @@ func TestElicitationNotSupportedOnStdio(t *testing.T) {
 	proxy := NewProxy(db)
 	em := NewElicitationManager()
 
-	clientReq := NewInitRequest("TestClient", "1.0.13")
+	clientReq := NewInitRequest("TestClient", "1.0.14")
 	clientReq.Params.Capabilities.Elicitation = &ElicitationCapability{Enabled: true}
 
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.13",
+			Version: "1.0.14",
 		},
 		Capabilities: Capabilities{
 			Elicitation: &ElicitationCapability{Enabled: true},
@@ -213,13 +213,13 @@ func TestSpecCompliance(t *testing.T) {
 
 	proxy := NewProxy(db)
 
-	clientReq := NewInitRequest("TestClient", "1.0.13")
+	clientReq := NewInitRequest("TestClient", "1.0.14")
 	clientReq.Params.Capabilities.Sampling = &SamplingCapability{Tools: true}
 
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.13",
+			Version: "1.0.14",
 		},
 		Capabilities: Capabilities{
 			Sampling: &SamplingCapability{Tools: true},
@@ -246,14 +246,14 @@ func TestCapabilityIntersectionRegressions(t *testing.T) {
 
 	proxy := NewProxy(db)
 
-	clientReq := NewInitRequest("TestClient", "1.0.13")
+	clientReq := NewInitRequest("TestClient", "1.0.14")
 	clientReq.Params.Capabilities.Sampling = &SamplingCapability{Tools: true}
 	clientReq.Params.Capabilities.ListChanged = true
 
 	serverResp := InitResponseResult{
 		ServerInfo: ServerInfo{
 			Name:    "TestServer",
-			Version: "1.0.13",
+			Version: "1.0.14",
 		},
 		Capabilities: Capabilities{
 			Sampling:    &SamplingCapability{Tools: false},
