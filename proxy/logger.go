@@ -35,7 +35,7 @@ func NewLogger(level string) *Logger {
 
 	return &Logger{
 		level:  logLevel,
-		logger: log.New(os.Stdout, "", log.LstdFlags),
+		logger: log.New(os.Stderr, "", log.LstdFlags),
 	}
 }
 
