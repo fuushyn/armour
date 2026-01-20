@@ -7,8 +7,21 @@ import (
 	"time"
 )
 
+// ensureBlocklistSchema makes sure the blocklist table exists before queries.
+// It reuses initDB which is idempotent (CREATE TABLE IF NOT EXISTS).
+func ensureBlocklistSchema(db *sql.DB) error {
+	if err := initDB(db); err != nil {
+		return fmt.Errorf("failed to ensure blocklist schema: %w", err)
+	}
+	return nil
+}
+
 // GetEnabledBlocklistRules retrieves all enabled blocklist rules from the database
 func GetEnabledBlocklistRules(db *sql.DB) ([]BlocklistRule, error) {
+	if err := ensureBlocklistSchema(db); err != nil {
+		return nil, err
+	}
+
 	query := `
 		SELECT id, pattern, description, action, is_regex, is_semantic, tools,
 		       perm_tools_call, perm_tools_list, perm_resources_read, perm_resources_list,
@@ -55,6 +68,10 @@ func GetEnabledBlocklistRules(db *sql.DB) ([]BlocklistRule, error) {
 
 // GetAllBlocklistRules retrieves all blocklist rules (including disabled) from the database
 func GetAllBlocklistRules(db *sql.DB) ([]BlocklistRule, error) {
+	if err := ensureBlocklistSchema(db); err != nil {
+		return nil, err
+	}
+
 	query := `
 		SELECT id, pattern, description, action, is_regex, is_semantic, tools,
 		       perm_tools_call, perm_tools_list, perm_resources_read, perm_resources_list,
@@ -100,6 +117,10 @@ func GetAllBlocklistRules(db *sql.DB) ([]BlocklistRule, error) {
 
 // CreateBlocklistRule inserts a new blocklist rule into the database
 func CreateBlocklistRule(db *sql.DB, rule *BlocklistRule) error {
+	if err := ensureBlocklistSchema(db); err != nil {
+		return err
+	}
+
 	query := `
 		INSERT INTO blocklist_rules (
 			pattern, description, action, is_regex, is_semantic, tools,
@@ -137,6 +158,10 @@ func CreateBlocklistRule(db *sql.DB, rule *BlocklistRule) error {
 
 // UpdateBlocklistRule updates an existing blocklist rule in the database
 func UpdateBlocklistRule(db *sql.DB, rule *BlocklistRule) error {
+	if err := ensureBlocklistSchema(db); err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE blocklist_rules
 		SET pattern = ?, description = ?, action = ?, is_regex = ?, is_semantic = ?, tools = ?,
@@ -176,6 +201,10 @@ func UpdateBlocklistRule(db *sql.DB, rule *BlocklistRule) error {
 
 // DeleteBlocklistRule deletes a blocklist rule from the database
 func DeleteBlocklistRule(db *sql.DB, id int64) error {
+	if err := ensureBlocklistSchema(db); err != nil {
+		return err
+	}
+
 	query := `DELETE FROM blocklist_rules WHERE id = ?`
 
 	result, err := db.Exec(query, id)
@@ -197,6 +226,10 @@ func DeleteBlocklistRule(db *sql.DB, id int64) error {
 
 // ToggleBlocklistRule enables or disables a blocklist rule
 func ToggleBlocklistRule(db *sql.DB, id int64) error {
+	if err := ensureBlocklistSchema(db); err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE blocklist_rules
 		SET enabled = CASE WHEN enabled = 1 THEN 0 ELSE 1 END,
@@ -223,6 +256,10 @@ func ToggleBlocklistRule(db *sql.DB, id int64) error {
 
 // GetBlocklistRuleByID retrieves a single blocklist rule by ID
 func GetBlocklistRuleByID(db *sql.DB, id int64) (*BlocklistRule, error) {
+	if err := ensureBlocklistSchema(db); err != nil {
+		return nil, err
+	}
+
 	query := `
 		SELECT id, pattern, description, action, is_regex, is_semantic, tools,
 		       perm_tools_call, perm_tools_list, perm_resources_read, perm_resources_list,
@@ -263,6 +300,10 @@ func LogBlocklistMatch(
 	matchedPattern string,
 	userID, sessionID *string,
 ) error {
+	if err := ensureBlocklistSchema(db); err != nil {
+		return err
+	}
+
 	query := `
 		INSERT INTO audit_log (
 			user_id, agent_id, server_id, method, capability, session_id,
