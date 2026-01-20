@@ -117,6 +117,36 @@ func (bm *BackendManager) convertClaudeConfigToServerEntry(name string, config m
 		entry.Command = cmd
 	}
 
+	// Get args for stdio servers
+	if args, ok := config["args"].([]interface{}); ok {
+		entry.Args = make([]string, 0, len(args))
+		for _, arg := range args {
+			if argStr, ok := arg.(string); ok {
+				entry.Args = append(entry.Args, argStr)
+			}
+		}
+	}
+
+	// Get environment variables
+	if env, ok := config["env"].(map[string]interface{}); ok {
+		entry.Env = make(map[string]string)
+		for k, v := range env {
+			if envVal, ok := v.(string); ok {
+				entry.Env[k] = envVal
+			}
+		}
+	}
+
+	// Get headers for HTTP servers
+	if headers, ok := config["headers"].(map[string]interface{}); ok {
+		entry.Headers = make(map[string]string)
+		for k, v := range headers {
+			if headerVal, ok := v.(string); ok {
+				entry.Headers[k] = headerVal
+			}
+		}
+	}
+
 	return entry
 }
 
@@ -784,6 +814,7 @@ func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *pr
 	switch serverEntry.Transport {
 	case "stdio":
 		// Spawn subprocess for stdio server
+		bm.logger.Info("spawning stdio subprocess for %s: %s %v", serverEntry.Name, serverEntry.Command, serverEntry.Args)
 		cmd := exec.CommandContext(ctx, serverEntry.Command, serverEntry.Args...)
 
 		// Set environment variables
@@ -805,14 +836,14 @@ func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *pr
 
 		// Start the process
 		if err := cmd.Start(); err != nil {
+			bm.logger.Error("failed to start stdio subprocess %s: %v", serverEntry.Name, err)
 			return fmt.Errorf("failed to start subprocess: %v", err)
 		}
 
 		// Create stdio transport
 		transport = proxy.NewStdioTransport(stdout, stdin)
 
-		// Store the command so we can clean it up later
-		bm.logger.Debug("started stdio subprocess for %s", serverEntry.Name)
+		bm.logger.Info("started stdio subprocess for %s (PID: %d)", serverEntry.Name, cmd.Process.Pid)
 
 	case "http":
 		// Create HTTP transport for this server
@@ -854,7 +885,7 @@ func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *pr
 
 	// Get tools from backend
 	if err := conn.getTools(ctx); err != nil {
-		bm.logger.Warn("failed to get tools from backend: %v", err)
+		bm.logger.Warn("failed to get tools from backend %s: %v", serverEntry.Name, err)
 		// Don't fail on tool retrieval - backend might not have tools
 	}
 
@@ -1003,7 +1034,7 @@ func (bc *BackendConnection) getTools(ctx context.Context) error {
 	}
 
 	bc.tools = toolsResp.Result.Tools
-	bc.logger.Debug("backend %s registered %d tool(s)", bc.config.Name, len(bc.tools))
+	bc.logger.Info("backend %s registered %d tool(s)", bc.config.Name, len(bc.tools))
 	return nil
 }
 
