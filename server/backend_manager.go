@@ -953,8 +953,7 @@ func (bc *BackendConnection) initialize(ctx context.Context) error {
 	// For SSE transport, establish the event stream after initialization
 	if sseTransport, ok := transport.(*proxy.SSETransport); ok {
 		if err := sseTransport.Connect(); err != nil {
-			bc.logger.Error("failed to connect SSE stream: %v", err)
-			return fmt.Errorf("failed to connect SSE stream: %v", err)
+			bc.logger.Warn("SSE stream unavailable for %s: %v (continuing without SSE)", bc.config.Name, err)
 		}
 	}
 
