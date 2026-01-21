@@ -1310,7 +1310,12 @@ func getUnifiedDashboardHTML() string {
 		function openDrawer(rule) {
 			editingRuleId = rule ? rule.id : null;
 			document.getElementById('drawer-title').textContent = rule ? 'Edit rule' : 'New rule';
-			document.getElementById('rule-tool').value = rule ? (rule.tools || '*') : '*';
+			// For the dropdown, strip :* suffix from MCP server names for display
+			let toolValue = '*';
+			if (rule && rule.tools) {
+				toolValue = rule.tools.replace(/:?\*$/, '') || '*';
+			}
+			document.getElementById('rule-tool').value = toolValue;
 			document.getElementById('rule-keywords').value = rule ? rule.pattern : '';
 			document.getElementById('rule-action').value = rule ? rule.action : 'block';
 
@@ -1413,13 +1418,26 @@ func getUnifiedDashboardHTML() string {
 				description = 'Block keywords: ' + keywordList.join(', ');
 			}
 
+			// Determine the tools value - for MCP servers, append :* to match all tools
+			let toolsValue = '';
+			if (tool !== '*') {
+				// Check if this is an MCP tool (not native) and doesn't already have a colon
+				const isNative = NATIVE_TOOLS.some(t => t.name === tool);
+				if (!isNative && !tool.includes(':')) {
+					// MCP server selected - append :* to match all tools from this server
+					toolsValue = tool + ':*';
+				} else {
+					toolsValue = tool;
+				}
+			}
+
 			const payload = {
 				pattern: pattern,
 				description: description,
 				action: action,
 				is_regex: true,
 				is_semantic: false,
-				tools: tool === '*' ? '' : tool,
+				tools: toolsValue,
 				enabled: true,
 				block_all: blockAll,
 				permissions: DEFAULT_PERMISSIONS[action] || DEFAULT_PERMISSIONS.block

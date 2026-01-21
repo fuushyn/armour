@@ -417,18 +417,45 @@ func (rs *RulesServer) ruleAppliesToTool(rule Rule, toolName string) bool {
 	}
 
 	toolName = strings.ToLower(toolName)
+	// Normalize tool name: replace __ and : with common separator for matching
+	normalizedToolName := strings.ReplaceAll(toolName, "__", "_")
+	normalizedToolName = strings.ReplaceAll(normalizedToolName, ":", "_")
+
 	for _, t := range strings.Split(tools, ",") {
 		t = strings.TrimSpace(strings.ToLower(t))
-		if t == toolName {
+		// Normalize pattern too
+		normalizedPattern := strings.ReplaceAll(t, "__", "_")
+		normalizedPattern = strings.ReplaceAll(normalizedPattern, ":", "_")
+
+		if t == toolName || normalizedPattern == normalizedToolName {
 			return true
+		}
+		// Contains match (e.g., "*delete*" matches "file_delete_doc")
+		if strings.HasPrefix(t, "*") && strings.HasSuffix(t, "*") && len(t) > 2 {
+			keyword := t[1 : len(t)-1]
+			if strings.Contains(toolName, keyword) || strings.Contains(normalizedToolName, keyword) {
+				return true
+			}
 		}
 		// Wildcard suffix match (e.g., "*delete" matches "file_delete")
-		if strings.HasPrefix(t, "*") && strings.HasSuffix(toolName, t[1:]) {
-			return true
+		if strings.HasPrefix(t, "*") && !strings.HasSuffix(t, "*") {
+			suffix := t[1:]
+			if strings.HasSuffix(toolName, suffix) || strings.HasSuffix(normalizedToolName, suffix) {
+				return true
+			}
 		}
 		// Wildcard prefix match (e.g., "bash*" matches "bash_exec")
-		if strings.HasSuffix(t, "*") && strings.HasPrefix(toolName, t[:len(t)-1]) {
-			return true
+		if strings.HasSuffix(t, "*") && !strings.HasPrefix(t, "*") {
+			prefix := t[:len(t)-1]
+			if strings.HasPrefix(toolName, prefix) || strings.HasPrefix(normalizedToolName, prefix) {
+				return true
+			}
+		}
+		// Plain keyword contains match (no wildcards) - check if keyword appears in tool name
+		if !strings.Contains(t, "*") {
+			if strings.Contains(toolName, t) || strings.Contains(normalizedToolName, t) {
+				return true
+			}
 		}
 	}
 	return false

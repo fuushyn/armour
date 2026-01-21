@@ -73,6 +73,15 @@ func (bm *BlocklistMiddleware) Check(method string, toolName string, args map[st
 	// Extract content from arguments for pattern matching
 	content := bm.extractContent(method, toolName, args)
 
+	// Lazy detection: if rules server URL not set, try to detect it
+	if bm.rulesServerURL == "" {
+		defaultRulesURL := "http://127.0.0.1:8084"
+		if CheckRulesServer(8084) {
+			bm.rulesServerURL = defaultRulesURL
+			bm.logger.Info("lazy-detected rules server at %s", defaultRulesURL)
+		}
+	}
+
 	// If rules server is configured, query it first (instant updates)
 	if bm.rulesServerURL != "" {
 		result, err := bm.queryRulesServer(toolName, method, content)
