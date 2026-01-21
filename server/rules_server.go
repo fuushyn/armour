@@ -72,6 +72,7 @@ func initRulesDB(db *sql.DB) error {
 		action TEXT DEFAULT 'block',
 		is_regex INTEGER DEFAULT 0,
 		is_semantic INTEGER DEFAULT 0,
+		block_all INTEGER DEFAULT 0,
 		enabled INTEGER DEFAULT 1,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -81,7 +82,14 @@ func initRulesDB(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_rules_scope ON rules(scope);
 	`
 	_, err := db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migration: add block_all column if it doesn't exist
+	_, _ = db.Exec("ALTER TABLE rules ADD COLUMN block_all INTEGER DEFAULT 0")
+
+	return nil
 }
 
 // Start starts the HTTP server
@@ -222,15 +230,20 @@ func (rs *RulesServer) handleCheck(w http.ResponseWriter, r *http.Request) {
 
 		matched := false
 
+		// Block all - matches any call to the specified tool(s)
+		if rule.BlockAll {
+			matched = true
+		}
+
 		// Check pattern (regex)
-		if rule.Pattern != "" && rule.IsRegex {
+		if !matched && rule.Pattern != "" && rule.IsRegex {
 			if rs.matchesRegex(rule.Pattern, req.Content) {
 				matched = true
 			}
 		}
 
 		// Check pattern (literal)
-		if rule.Pattern != "" && !rule.IsRegex && !rule.IsSemantic {
+		if !matched && rule.Pattern != "" && !rule.IsRegex && !rule.IsSemantic {
 			if strings.Contains(strings.ToLower(req.Content), strings.ToLower(rule.Pattern)) {
 				matched = true
 			}
@@ -355,6 +368,7 @@ type Rule struct {
 	Action     string    `json:"action"`
 	IsRegex    bool      `json:"is_regex"`
 	IsSemantic bool      `json:"is_semantic"`
+	BlockAll   bool      `json:"block_all"`
 	Enabled    bool      `json:"enabled"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
@@ -364,7 +378,7 @@ type Rule struct {
 func (rs *RulesServer) getEnabledRules(scope string) ([]Rule, error) {
 	query := `
 		SELECT id, name, pattern, topics, tools, scope, action,
-		       is_regex, is_semantic, enabled, created_at, updated_at
+		       is_regex, is_semantic, COALESCE(block_all, 0), enabled, created_at, updated_at
 		FROM rules
 		WHERE enabled = 1 AND (scope = ? OR scope = 'all')
 		ORDER BY id
@@ -383,7 +397,7 @@ func (rs *RulesServer) getEnabledRules(scope string) ([]Rule, error) {
 		err := rows.Scan(
 			&rule.ID, &rule.Name, &pattern, &topics, &rule.Tools,
 			&rule.Scope, &rule.Action, &rule.IsRegex, &rule.IsSemantic,
-			&rule.Enabled, &rule.CreatedAt, &rule.UpdatedAt,
+			&rule.BlockAll, &rule.Enabled, &rule.CreatedAt, &rule.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -461,7 +475,7 @@ func (rs *RulesServer) handleRuleByID(w http.ResponseWriter, r *http.Request) {
 func (rs *RulesServer) listRules(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT id, name, pattern, topics, tools, scope, action,
-		       is_regex, is_semantic, enabled, created_at, updated_at
+		       is_regex, is_semantic, COALESCE(block_all, 0), enabled, created_at, updated_at
 		FROM rules ORDER BY id DESC
 	`
 	rows, err := rs.db.Query(query)
@@ -478,7 +492,7 @@ func (rs *RulesServer) listRules(w http.ResponseWriter, r *http.Request) {
 		err := rows.Scan(
 			&rule.ID, &rule.Name, &pattern, &topics, &rule.Tools,
 			&rule.Scope, &rule.Action, &rule.IsRegex, &rule.IsSemantic,
-			&rule.Enabled, &rule.CreatedAt, &rule.UpdatedAt,
+			&rule.BlockAll, &rule.Enabled, &rule.CreatedAt, &rule.UpdatedAt,
 		)
 		if err != nil {
 			continue
@@ -517,10 +531,10 @@ func (rs *RulesServer) createRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := rs.db.Exec(`
-		INSERT INTO rules (name, pattern, topics, tools, scope, action, is_regex, is_semantic, enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO rules (name, pattern, topics, tools, scope, action, is_regex, is_semantic, block_all, enabled)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, rule.Name, rule.Pattern, rule.Topics, rule.Tools, rule.Scope, rule.Action,
-		rule.IsRegex, rule.IsSemantic, true)
+		rule.IsRegex, rule.IsSemantic, rule.BlockAll, true)
 
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -540,12 +554,12 @@ func (rs *RulesServer) getRule(w http.ResponseWriter, id int) {
 	var pattern, topics sql.NullString
 	err := rs.db.QueryRow(`
 		SELECT id, name, pattern, topics, tools, scope, action,
-		       is_regex, is_semantic, enabled, created_at, updated_at
+		       is_regex, is_semantic, COALESCE(block_all, 0), enabled, created_at, updated_at
 		FROM rules WHERE id = ?
 	`, id).Scan(
 		&rule.ID, &rule.Name, &pattern, &topics, &rule.Tools,
 		&rule.Scope, &rule.Action, &rule.IsRegex, &rule.IsSemantic,
-		&rule.Enabled, &rule.CreatedAt, &rule.UpdatedAt,
+		&rule.BlockAll, &rule.Enabled, &rule.CreatedAt, &rule.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		http.Error(w, "Rule not found", http.StatusNotFound)
@@ -571,11 +585,11 @@ func (rs *RulesServer) updateRule(w http.ResponseWriter, r *http.Request, id int
 	_, err := rs.db.Exec(`
 		UPDATE rules SET
 			name = ?, pattern = ?, topics = ?, tools = ?, scope = ?,
-			action = ?, is_regex = ?, is_semantic = ?, enabled = ?,
+			action = ?, is_regex = ?, is_semantic = ?, block_all = ?, enabled = ?,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, rule.Name, rule.Pattern, rule.Topics, rule.Tools, rule.Scope,
-		rule.Action, rule.IsRegex, rule.IsSemantic, rule.Enabled, id)
+		rule.Action, rule.IsRegex, rule.IsSemantic, rule.BlockAll, rule.Enabled, id)
 
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)

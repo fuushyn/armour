@@ -936,9 +936,16 @@ func getUnifiedDashboardHTML() string {
 				</select>
 			</div>
 			<div class="form-row">
+				<label class="checkbox-label">
+					<input type="checkbox" id="rule-block-all" />
+					<span>Block all calls to this tool</span>
+				</label>
+				<span class="muted">When enabled, blocks all calls regardless of arguments</span>
+			</div>
+			<div class="form-row" id="keywords-row">
 				<label for="rule-keywords">Keywords to block</label>
-				<input class="input" id="rule-keywords" type="text" placeholder="e.g. password, secret, DROP TABLE" required />
-				<span class="muted">Comma-separated keywords that trigger this rule</span>
+				<input class="input" id="rule-keywords" type="text" placeholder="e.g. password, secret, DROP TABLE" />
+				<span class="muted">Comma-separated keywords that trigger this rule (ignored if "Block all" is checked)</span>
 			</div>
 			<div class="form-row">
 				<label for="rule-action">Action</label>
@@ -1213,7 +1220,10 @@ func getUnifiedDashboardHTML() string {
 				const enabledLabel = rule.enabled ? 'enabled' : 'disabled';
 				const toolsLabel = rule.tools && rule.tools.trim() ? rule.tools : 'all tools';
 				const typeLabels = [];
-				if (rule.is_regex) {
+				if (rule.block_all) {
+					typeLabels.push('<span class="chip chip-block">block all</span>');
+				}
+				if (rule.is_regex && !rule.block_all) {
 					typeLabels.push('<span class="chip">regex</span>');
 				}
 				if (rule.is_semantic) {
@@ -1304,6 +1314,12 @@ func getUnifiedDashboardHTML() string {
 			document.getElementById('rule-keywords').value = rule ? rule.pattern : '';
 			document.getElementById('rule-action').value = rule ? rule.action : 'block';
 
+			// Handle block_all checkbox
+			const blockAllCheckbox = document.getElementById('rule-block-all');
+			const keywordsRow = document.getElementById('keywords-row');
+			blockAllCheckbox.checked = rule ? (rule.block_all || false) : false;
+			keywordsRow.style.display = blockAllCheckbox.checked ? 'none' : 'flex';
+
 			document.body.classList.add('drawer-open');
 			drawer.setAttribute('aria-hidden', 'false');
 		}
@@ -1322,6 +1338,7 @@ func getUnifiedDashboardHTML() string {
 				is_semantic: rule.is_semantic,
 				tools: rule.tools || '',
 				enabled: rule.enabled,
+				block_all: rule.block_all || false,
 				permissions: rule.permissions || DEFAULT_PERMISSIONS[rule.action]
 			};
 
@@ -1367,28 +1384,44 @@ func getUnifiedDashboardHTML() string {
 				.catch((err) => showToast('Failed to reload servers: ' + err.message, 'error'));
 		});
 
+		// Toggle keywords field visibility when block_all checkbox changes
+		document.getElementById('rule-block-all').addEventListener('change', (event) => {
+			const keywordsRow = document.getElementById('keywords-row');
+			keywordsRow.style.display = event.target.checked ? 'none' : 'flex';
+		});
+
 		document.getElementById('rule-form').addEventListener('submit', (event) => {
 			event.preventDefault();
+			const blockAll = document.getElementById('rule-block-all').checked;
 			const keywords = document.getElementById('rule-keywords').value.trim();
-			if (!keywords) {
-				showToast('Keywords are required', 'error');
+
+			if (!blockAll && !keywords) {
+				showToast('Keywords are required (or enable "Block all")', 'error');
 				return;
 			}
 			const tool = document.getElementById('rule-tool').value;
 			const action = document.getElementById('rule-action').value;
 
-			// Build regex pattern from keywords
-			const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k);
-			const pattern = keywordList.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+			let pattern, description;
+			if (blockAll) {
+				pattern = '.*';
+				description = 'Block all calls to ' + (tool === '*' ? 'all tools' : tool);
+			} else {
+				// Build regex pattern from keywords
+				const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k);
+				pattern = keywordList.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+				description = 'Block keywords: ' + keywordList.join(', ');
+			}
 
 			const payload = {
 				pattern: pattern,
-				description: 'Block keywords: ' + keywordList.join(', '),
+				description: description,
 				action: action,
 				is_regex: true,
 				is_semantic: false,
 				tools: tool === '*' ? '' : tool,
 				enabled: true,
+				block_all: blockAll,
 				permissions: DEFAULT_PERMISSIONS[action] || DEFAULT_PERMISSIONS.block
 			};
 
