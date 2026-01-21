@@ -744,11 +744,18 @@ func (ds *Server) handleToolsAPI(w http.ResponseWriter, r *http.Request) {
 		{"name": "NotebookEdit", "type": "native", "description": "Edit Jupyter notebooks"},
 	}
 
-	// Get MCP tools from tool registry (aggregated from all backends)
+	// Get MCP tools from multiple sources and merge them
 	mcpTools := []map[string]interface{}{}
+	seenTools := make(map[string]bool)
+
+	// Source 1: Tool registry (live tools from connected backends)
 	if ds.toolRegistry != nil {
 		registeredTools := ds.toolRegistry.ListAllTools()
 		for _, tool := range registeredTools {
+			if seenTools[tool.Name] {
+				continue
+			}
+			seenTools[tool.Name] = true
 			backendName := tool.BackendID
 			if backendName == "" {
 				parts := strings.SplitN(tool.Name, ":", 2)
@@ -765,24 +772,26 @@ func (ds *Server) handleToolsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If no MCP tools from registry, try loading from persisted discovered-tools.json
-	if len(mcpTools) == 0 {
-		if discoveredTools, err := server.LoadDiscoveredTools(); err == nil && len(discoveredTools) > 0 {
-			for _, tool := range discoveredTools {
-				backendName := tool.BackendID
-				if backendName == "" {
-					parts := strings.SplitN(tool.Name, ":", 2)
-					if len(parts) == 2 {
-						backendName = parts[0]
-					}
-				}
-				mcpTools = append(mcpTools, map[string]interface{}{
-					"name":        tool.Name,
-					"type":        "mcp",
-					"server":      backendName,
-					"description": tool.Description,
-				})
+	// Source 2: Persisted discovered-tools.json (includes tools from all backends)
+	if discoveredTools, err := server.LoadDiscoveredTools(); err == nil && len(discoveredTools) > 0 {
+		for _, tool := range discoveredTools {
+			if seenTools[tool.Name] {
+				continue
 			}
+			seenTools[tool.Name] = true
+			backendName := tool.BackendID
+			if backendName == "" {
+				parts := strings.SplitN(tool.Name, ":", 2)
+				if len(parts) == 2 {
+					backendName = parts[0]
+				}
+			}
+			mcpTools = append(mcpTools, map[string]interface{}{
+				"name":        tool.Name,
+				"type":        "mcp",
+				"server":      backendName,
+				"description": tool.Description,
+			})
 		}
 	}
 
