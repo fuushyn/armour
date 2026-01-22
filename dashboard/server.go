@@ -33,6 +33,7 @@ type Server struct {
 	toolRegistry  *server.ToolRegistry
 	db            *sql.DB
 	logger        *proxy.Logger
+	trace         *proxy.TraceRecorder
 
 	mu sync.RWMutex
 }
@@ -48,6 +49,7 @@ func NewDashboardServer(
 	toolRegistry *server.ToolRegistry,
 	db *sql.DB,
 	logger *proxy.Logger,
+	trace *proxy.TraceRecorder,
 ) *Server {
 	ds := &Server{
 		listenAddr:    listenAddr,
@@ -59,6 +61,7 @@ func NewDashboardServer(
 		toolRegistry:  toolRegistry,
 		db:            db,
 		logger:        logger,
+		trace:         trace,
 	}
 
 	// Setup HTTP routes
@@ -74,6 +77,7 @@ func NewDashboardServer(
 	mux.HandleFunc("/api/stats", ds.handleStatsAPI)
 	mux.HandleFunc("/api/audit", ds.handleAuditAPI)
 	mux.HandleFunc("/api/health", ds.handleHealthAPI)
+	mux.HandleFunc("/api/trace", ds.handleTraceAPI)
 
 	// UI endpoints
 	mux.HandleFunc("/", ds.handleDashboardUI)
@@ -1103,6 +1107,26 @@ func (ds *Server) handleHealthAPI(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleTraceAPI returns recent trace events for observability.
+func (ds *Server) handleTraceAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if ds.trace == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"events": []interface{}{},
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"events": ds.trace.List(),
+	})
 }
 
 // UI Handlers

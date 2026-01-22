@@ -3,15 +3,14 @@ package server
 import (
 	"database/sql"
 	"testing"
-	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // TestBlocklistBasics tests basic blocklist operations
 func TestBlocklistBasics(t *testing.T) {
 	// Create in-memory database
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", "file:memdb_blocklist?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -136,10 +135,10 @@ func TestDefaultPermissions(t *testing.T) {
 // TestRuleAppliesToTool tests tool filtering logic
 func TestRuleAppliesToTool(t *testing.T) {
 	tests := []struct {
-		tools     string
-		toolName  string
-		applies   bool
-		desc      string
+		tools    string
+		toolName string
+		applies  bool
+		desc     string
 	}{
 		{"", "any_tool", true, "Empty tools applies to all"},
 		{"*", "any_tool", true, "Wildcard applies to all"},

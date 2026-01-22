@@ -1,6 +1,6 @@
 {
   "name": "armour",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "description": "Security-enhanced MCP proxy. Proxies all plugin MCP servers through a unified security layer. Block destructive tool calls, audit operations, and recover configs with /armour commands.",
   "author": {
     "name": "fuushyn",

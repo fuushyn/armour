@@ -37,6 +37,7 @@ type Server struct {
 	registry     *proxy.ServerRegistry
 	forwarder    *proxy.Forwarder
 	logger       *proxy.Logger
+	trace        *proxy.TraceRecorder
 	mu           sync.RWMutex
 	shutdown     chan struct{}
 }
@@ -60,6 +61,8 @@ func NewServer(config Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to init database: %v", err)
 	}
 
+	traceRecorder := proxy.NewTraceRecorder(200)
+
 	registry, err := proxy.LoadServerRegistry(config.ConfigPath)
 	if err != nil {
 		db.Close()
@@ -76,9 +79,10 @@ func NewServer(config Config) (*Server, error) {
 		securityMgr:  proxy.NewSecurityManager(),
 		auditLog:     proxy.NewAuditLog(),
 		registry:     registry,
-		forwarder:    proxy.NewForwarder(),
+		forwarder:    proxy.NewForwarder(proxy.WithForwarderTracer(traceRecorder)),
 		logger:       proxy.NewLogger(config.LogLevel),
 		shutdown:     make(chan struct{}),
+		trace:        traceRecorder,
 	}
 
 	for _, origin := range config.AllowedOrigins {
@@ -88,6 +92,7 @@ func NewServer(config Config) (*Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/mcp", s.handleMCP)
+	mux.HandleFunc("/trace", s.handleTrace)
 
 	s.httpServer = &http.Server{
 		Addr:    config.ListenAddr,
@@ -106,6 +111,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// handleTrace exposes recent translation/forwarding steps for observability.
+func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.trace == nil {
+		w.WriteHeader(http.StatusNotImplemented)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"events": s.trace.List(),
+	})
 }
 
 func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
@@ -181,11 +204,30 @@ func (s *Server) handleMCPPost(w http.ResponseWriter, r *http.Request, server *p
 	w.Header().Set(proxy.HeaderSessionID, sessionID)
 	if statusCode == http.StatusNoContent {
 		w.WriteHeader(statusCode)
+		if s.trace != nil {
+			s.trace.Add(proxy.TraceEvent{
+				Stage:     "response",
+				Server:    server.Name,
+				Method:    http.MethodPost,
+				Transport: "http",
+				Detail:    "no content response",
+			})
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_, _ = io.Copy(w, body)
+
+	if s.trace != nil {
+		s.trace.Add(proxy.TraceEvent{
+			Stage:     "response",
+			Server:    server.Name,
+			Method:    http.MethodPost,
+			Transport: "http",
+			Detail:    fmt.Sprintf("upstream status %d", statusCode),
+		})
+	}
 }
 
 func (s *Server) handleMCPGet(w http.ResponseWriter, r *http.Request, server *proxy.ServerEntry, sessionID string) {
@@ -215,6 +257,16 @@ func (s *Server) handleMCPGet(w http.ResponseWriter, r *http.Request, server *pr
 		w.WriteHeader(http.StatusBadGateway)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
+	}
+
+	if s.trace != nil {
+		s.trace.Add(proxy.TraceEvent{
+			Stage:     "response",
+			Server:    server.Name,
+			Method:    http.MethodGet,
+			Transport: "sse",
+			Detail:    "SSE stream piped to client",
+		})
 	}
 }
 

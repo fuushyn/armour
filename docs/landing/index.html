@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Armour · Secure MCP Proxy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #0f131c;
+      --panel-2: #0c1018;
+      --border: #1c2231;
+      --muted: #96a4b7;
+      --text: #e7ebf2;
+      --accent: #9bff6e;
+      --accent-2: #ffcf6f;
+      --accent-3: #6ecbff;
+      --radius: 10px;
+      --shadow: 0 8px 0 #05070c;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      letter-spacing: -0.01em;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px 28px;
+    }
+
+    .divider {
+      height: 1px;
+      border-bottom: 1px dashed rgba(255,255,255,0.14);
+      margin: 0;
+    }
+
+    .ticker {
+      background: var(--accent);
+      color: #031106;
+      border-bottom: 2px dashed #031106;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .marquee {
+      display: flex;
+      gap: 28px;
+      white-space: nowrap;
+      padding: 10px 24px;
+      animation: scroll 24s linear infinite;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .ticker-label {
+      position: absolute;
+      right: 18px;
+      top: 0;
+      bottom: 0;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 10px;
+      background: #0f131c;
+      color: var(--text);
+      border-left: 2px dashed #031106;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    @keyframes scroll {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    nav {
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-top: 14px;
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      box-shadow: var(--shadow);
+    }
+
+    .brand {
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.02em;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-mark {
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-3));
+      border: 2px solid #03060c;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "JetBrains Mono", monospace;
+      color: #03060c;
+      border-radius: 6px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 0;
+      flex: 1;
+      flex-wrap: wrap;
+      align-items: stretch;
+    }
+
+    .nav-links a {
+      padding: 10px 14px;
+      color: var(--text);
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border-left: 1px dashed var(--border);
+    }
+
+    .nav-links a:first-child { border-left: none; }
+
+    .nav-links a:hover { background: #101622; }
+
+    .nav-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--accent-3);
+      color: #06111d;
+      border: 2px solid #06111d;
+      padding: 8px 12px;
+      border-radius: 9px;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-wrap {
+      padding-top: 22px;
+    }
+
+    .announcement {
+      border: 2px dashed var(--border);
+      background: var(--panel-2);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 18px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      box-shadow: var(--shadow);
+    }
+
+    .announcement .meta {
+      font-size: 14px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+
+    .announcement strong {
+      font-size: 18px;
+      display: block;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      align-items: start;
+    }
+
+    h1 {
+      font-size: clamp(32px, 4.8vw, 52px);
+      margin: 14px 0 10px;
+      line-height: 1.12;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 640px;
+    }
+
+    .cta-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      transition: transform 0.12s ease, background 0.12s ease;
+      border: 2px solid #0b0e15;
+      box-shadow: var(--shadow);
+    }
+
+    .btn.primary { background: var(--accent); color: #031106; }
+    .btn.secondary { background: #0c1018; color: var(--text); border-color: var(--border); }
+    .btn:hover { transform: translateY(-2px); }
+
+    .mono-block {
+      font-family: "JetBrains Mono", monospace;
+      background: #0c111b;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      color: var(--text);
+      box-shadow: var(--shadow);
+      margin-top: 8px;
+      overflow: auto;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .chip {
+      background: #0c1018;
+      border: 1.5px dashed var(--border);
+      color: var(--text);
+      padding: 9px 11px;
+      border-radius: 8px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .window {
+      background: var(--panel);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .window-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      background: #0a0f18;
+      border-bottom: 2px solid var(--border);
+      font-weight: 700;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .dots { display: inline-flex; gap: 6px; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      border: 2px solid #010203;
+    }
+    .dot.red { background: #ff5f52; }
+    .dot.amber { background: #ffcf6f; }
+    .dot.green { background: #9bff6e; }
+
+    .window-body {
+      padding: 14px;
+      font-family: "JetBrains Mono", monospace;
+      background: #0c111c;
+      color: #e4e9f2;
+      display: grid;
+      gap: 10px;
+      min-height: 220px;
+    }
+
+    .log-line {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1.5px dashed var(--border);
+      border-radius: 9px;
+      background: #0f1726;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .status.blocked { color: #ff9b9b; }
+    .status.allowed { color: #9bff6e; }
+
+    .section { margin-top: 36px; }
+    .section h2 {
+      margin: 0 0 8px;
+      font-size: clamp(26px, 3vw, 34px);
+      letter-spacing: 0.02em;
+    }
+    .section .eyebrow {
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 10px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 8px;
+    }
+
+    .card strong { font-size: 16px; }
+    .card p { margin: 0; color: var(--muted); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 9px;
+      background: #0c1018;
+      color: var(--text);
+      border: 1.5px dashed var(--border);
+      border-radius: 8px;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .policy-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-top: 10px;
+    }
+
+    .policy {
+      background: #0d111a;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 8px;
+    }
+
+    .policy h3 { margin: 0; font-size: 18px; }
+    .policy ul { margin: 0; padding-left: 18px; color: var(--muted); }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .step {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: #0c1018;
+      box-shadow: var(--shadow);
+    }
+
+    .step-number {
+      font-family: "JetBrains Mono", monospace;
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+    }
+
+    .cta-final {
+      margin: 34px 0 22px;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      background: #0f131c;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 10px;
+    }
+
+    footer {
+      margin: 20px 0 26px;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px;
+    }
+
+    code { font-family: "JetBrains Mono", monospace; }
+
+    @media (max-width: 720px) {
+      nav { flex-direction: column; align-items: flex-start; }
+      .nav-links { width: 100%; }
+      .nav-links a { flex: 1; text-align: center; border-left: none; border-top: 1px dashed var(--border); }
+      .nav-links a:first-child { border-top: none; }
+      .log-line { grid-template-columns: 1fr; }
+      .ticker-label { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ticker" aria-hidden="true">
+    <div class="marquee">
+      <span>🛡️ Armour v1.0.3 hardened release</span>
+      <span>🚫 Blocks rm*, delete*, drop* before execution</span>
+      <span>📑 Full audit log for every MCP call</span>
+      <span>⚡ Zero-config: auto-detects Claude Code servers</span>
+      <span>🔒 Policies: strict · moderate · permissive</span>
+      <span>🛡️ Armour v1.0.3 hardened release</span>
+      <span>🚫 Blocks rm*, delete*, drop* before execution</span>
+      <span>📑 Full audit log for every MCP call</span>
+      <span>⚡ Zero-config: auto-detects Claude Code servers</span>
+      <span>🔒 Policies: strict · moderate · permissive</span>
+    </div>
+    <div class="ticker-label">Audit-first proxy</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="page">
+    <nav>
+      <div class="brand">
+        <span class="brand-mark">A</span>
+        Armour · Secure MCP Proxy
+      </div>
+      <div class="nav-links">
+        <a href="https://github.com/fuushyn/armour">GitHub</a>
+        <a href="https://github.com/fuushyn/armour#installation">Install</a>
+        <a href="https://github.com/fuushyn/armour#features">Features</a>
+        <a href="https://github.com/fuushyn/armour/issues">Issues</a>
+        <a href="https://github.com/fuushyn/armour#support">Docs</a>
+      </div>
+      <div class="nav-actions">
+        <a class="chip" href="https://github.com/fuushyn/armour">★ Star</a>
+      </div>
+    </nav>
+
+    <div class="divider" style="margin: 14px 0;"></div>
+
+    <div class="hero-wrap">
+      <div class="announcement">
+        <div>
+          <div class="meta">Update</div>
+          <strong>v1.0.3 · Hardened release with stricter destructive-call detection</strong>
+        </div>
+        <a class="btn secondary" href="https://github.com/fuushyn/armour/releases">Changelog</a>
+      </div>
+
+      <section class="hero">
+        <div>
+          <div class="pill">Neo-brutalist · Terminal-inspired</div>
+          <h1>Armour keeps your coding agents from doing dangerous things.</h1>
+          <p class="lead">Block destructive tool calls, enforce policies, and capture a full audit log for Claude Code, MCP servers, and your own automations. No fluff — just a safety layer that refuses risky commands.</p>
+
+          <div class="cta-row">
+            <a class="btn primary" href="https://github.com/fuushyn/armour#installation">Install in 30s</a>
+            <a class="btn secondary" href="https://github.com/fuushyn/armour">View on GitHub</a>
+          </div>
+
+          <div class="mono-block">curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/scripts/install-armour.sh | bash</div>
+
+          <div class="chips">
+            <div class="chip">Strict / Moderate / Permissive</div>
+            <div class="chip">MCP auto-discovery</div>
+            <div class="chip">Immutable audit trail</div>
+            <div class="chip">Multi-server namespaces</div>
+          </div>
+        </div>
+
+        <div class="window">
+          <div class="window-header">
+            Armour · audit feed
+            <div class="dots">
+              <span class="dot red"></span>
+              <span class="dot amber"></span>
+              <span class="dot green"></span>
+            </div>
+          </div>
+          <div class="window-body">
+            <div class="log-line">
+              <span class="status blocked">BLOCKED</span>
+              <div>rm -rf /var/tmp/requested-by agent#3<br><code>policy: strict · destructive pattern</code></div>
+            </div>
+            <div class="log-line">
+              <span class="status allowed">ALLOWED</span>
+              <div>find ./fixtures -type f<br><code>policy: moderate · traced · 12ms</code></div>
+            </div>
+            <div class="log-line">
+              <span class="status allowed">ALLOWED</span>
+              <div>tool:git.diff repo=api-server<br><code>policy: permissive · namespace: acme-dev</code></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="section">
+      <div class="eyebrow">Why Armour</div>
+      <h2>Security guardrails with none of the ceremony.</h2>
+      <div class="cards">
+        <div class="card">
+          <div class="badge">Blocklist-first</div>
+          <strong>Stops bad calls before they leave the IDE.</strong>
+          <p>Pattern matches destructive verbs (rm*, delete*, drop*, sample*) and rejects before tool execution.</p>
+        </div>
+        <div class="card">
+          <div class="badge">Audit trail</div>
+          <strong>Every tool call logged with context.</strong>
+          <p>Who called it, which MCP server, arguments, latency. Exportable JSON for alerts or review.</p>
+        </div>
+        <div class="card">
+          <div class="badge">Zero config</div>
+          <strong>Auto-discovers servers and adds namespaces.</strong>
+          <p>Drop Armour in and keep coding. Namespacing prevents cross-talk between servers.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="eyebrow">Policies</div>
+      <h2>Pick a posture, keep shipping.</h2>
+      <div class="policy-grid">
+        <div class="policy">
+          <h3>Strict</h3>
+          <p>Read-only, blocks destructive actions, good for prod branches.</p>
+          <ul>
+            <li>Rejects rm*, delete*, drop*</li>
+            <li>No sampling or shell writes</li>
+            <li>Full trace of every call</li>
+          </ul>
+        </div>
+        <div class="policy">
+          <h3>Moderate</h3>
+          <p>Balanced guardrails for day-to-day work.</p>
+          <ul>
+            <li>Blocks obvious destructive commands</li>
+            <li>Allows safe edits and reads</li>
+            <li>Audit log stays on</li>
+          </ul>
+        </div>
+        <div class="policy">
+          <h3>Permissive</h3>
+          <p>Fast in sandboxes, still logged.</p>
+          <ul>
+            <li>No blocking, full visibility</li>
+            <li>Use for experiments and staging</li>
+            <li>Flip to strict for prod</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="eyebrow">Workflow</div>
+      <h2>Install, route, review. That's it.</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">01 // Install</div>
+          <p>One command drops Armour into Claude Code and syncs the marketplace bundle.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">02 // Route</div>
+          <p>Armour wraps your MCP servers with namespacing, so every agent call is scoped and verified.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">03 // Review</div>
+          <p>Audit feed shows what ran, what was blocked, and why. Export logs to SIEMs or keep local.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="eyebrow">CLI Quickstart</div>
+      <div class="mono-block">$ armour --policy strict --server acme-dev --audit ./logs/armour.json<br>$ armour tail --follow<br>$ armour blocklist add "rm -rf /"</div>
+    </section>
+
+    <section class="cta-final">
+      <div class="eyebrow">Ready</div>
+      <h2>Give your coding agents a bouncer.</h2>
+      <p class="lead">Drop Armour in front of Claude Code and every MCP server you run. Keep shipping — without the “rm -rf” heart attacks.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/fuushyn/armour#installation">Install Armour</a>
+        <a class="btn secondary" href="https://github.com/fuushyn/armour#support">Get support</a>
+      </div>
+    </section>
+
+    <footer>Armour · Security-enhanced MCP proxy · MIT Licensed</footer>
+  </div>
+</body>
+</html>

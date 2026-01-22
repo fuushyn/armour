@@ -686,18 +686,20 @@ type BackendManager struct {
 	toolRegistry       *ToolRegistry
 	initializationDone chan struct{}
 	initializationOnce sync.Once
+	trace              *proxy.TraceRecorder
 }
 
 const backendInitTimeout = 8 * time.Second
 
 // NewBackendManager creates a new backend manager.
-func NewBackendManager(registry *proxy.ServerRegistry, logger *proxy.Logger, toolRegistry *ToolRegistry) *BackendManager {
+func NewBackendManager(registry *proxy.ServerRegistry, logger *proxy.Logger, toolRegistry *ToolRegistry, trace *proxy.TraceRecorder) *BackendManager {
 	return &BackendManager{
 		registry:           registry,
 		logger:             logger,
 		connections:        make(map[string]*BackendConnection),
 		toolRegistry:       toolRegistry,
 		initializationDone: make(chan struct{}),
+		trace:              trace,
 	}
 }
 
@@ -807,6 +809,15 @@ func (bm *BackendManager) WaitForAnyBackend(ctx context.Context, timeout time.Du
 func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *proxy.ServerEntry) error {
 	expandServerEntry(serverEntry)
 	bm.logger.Debug("initializing backend: %s (%s)", serverEntry.Name, serverEntry.Transport)
+	if bm.trace != nil {
+		bm.trace.Add(proxy.TraceEvent{
+			Stage:     "discovery",
+			Server:    serverEntry.Name,
+			Method:    "initialize",
+			Transport: serverEntry.Transport,
+			Detail:    "starting backend initialization",
+		})
+	}
 
 	// Create transport based on server configuration
 	var transport proxy.Transport
@@ -880,6 +891,15 @@ func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *pr
 
 	// Send initialize request to backend
 	if err := conn.initialize(ctx); err != nil {
+		if bm.trace != nil {
+			bm.trace.Add(proxy.TraceEvent{
+				Stage:     "translate",
+				Server:    serverEntry.Name,
+				Method:    "initialize",
+				Transport: serverEntry.Transport,
+				Detail:    fmt.Sprintf("init failed: %v", err),
+			})
+		}
 		return fmt.Errorf("backend initialization failed: %v", err)
 	}
 
@@ -897,6 +917,16 @@ func (bm *BackendManager) initializeBackend(ctx context.Context, serverEntry *pr
 	// Persist discovered tools to file for dashboard access
 	if err := bm.toolRegistry.SaveToFile(); err != nil {
 		bm.logger.Debug("failed to persist discovered tools: %v", err)
+	}
+
+	if bm.trace != nil {
+		bm.trace.Add(proxy.TraceEvent{
+			Stage:     "discovery",
+			Server:    serverEntry.Name,
+			Method:    "tools/list",
+			Transport: serverEntry.Transport,
+			Detail:    "backend initialized and tools registered",
+		})
 	}
 
 	// Store connection
@@ -931,7 +961,32 @@ func (bm *BackendManager) CallTool(ctx context.Context, backendID string, toolNa
 		return nil, fmt.Errorf("backend not found: %s", backendID)
 	}
 
-	return conn.callTool(ctx, toolName, arguments)
+	if bm.trace != nil {
+		bm.trace.Add(proxy.TraceEvent{
+			Stage:     "translate",
+			Server:    backendID,
+			Method:    "tools/call",
+			Transport: conn.config.Transport,
+			Detail:    fmt.Sprintf("calling %s", toolName),
+		})
+	}
+
+	result, err := conn.callTool(ctx, toolName, arguments)
+	if bm.trace != nil {
+		status := "ok"
+		if err != nil {
+			status = err.Error()
+		}
+		bm.trace.Add(proxy.TraceEvent{
+			Stage:     "response",
+			Server:    backendID,
+			Method:    "tools/call",
+			Transport: conn.config.Transport,
+			Detail:    fmt.Sprintf("completed %s", status),
+		})
+	}
+
+	return result, err
 }
 
 // BackendConnection methods

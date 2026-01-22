@@ -11,14 +11,28 @@ import (
 
 type Forwarder struct {
 	client *http.Client
+	tracer *TraceRecorder
 }
 
-func NewForwarder() *Forwarder {
-	return &Forwarder{
+type ForwarderOption func(*Forwarder)
+
+// WithForwarderTracer attaches a trace recorder to capture translation steps.
+func WithForwarderTracer(tracer *TraceRecorder) ForwarderOption {
+	return func(f *Forwarder) {
+		f.tracer = tracer
+	}
+}
+
+func NewForwarder(opts ...ForwarderOption) *Forwarder {
+	f := &Forwarder{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
 }
 
 func (f *Forwarder) ForwardPOST(upstreamURL, sessionID string, reqBody io.Reader) (io.ReadCloser, int, error) {
@@ -43,6 +57,16 @@ func (f *Forwarder) ForwardPOST(upstreamURL, sessionID string, reqBody io.Reader
 		return nil, 0, fmt.Errorf("failed to forward request: %w", err)
 	}
 
+	if f.tracer != nil {
+		f.tracer.Add(TraceEvent{
+			Stage:     "forward",
+			Server:    upstreamURL,
+			Method:    http.MethodPost,
+			Transport: "http",
+			Detail:    "POST forwarded to upstream",
+		})
+	}
+
 	return resp.Body, resp.StatusCode, nil
 }
 
@@ -63,6 +87,17 @@ func (f *Forwarder) ForwardGET(upstreamURL, sessionID string, lastEventID string
 	resp, err := f.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to forward request: %w", err)
+	}
+
+	if f.tracer != nil {
+		f.tracer.Add(TraceEvent{
+			Stage:      "forward",
+			Server:     upstreamURL,
+			Method:     http.MethodGet,
+			Transport:  "sse",
+			Detail:     "GET forwarded for SSE",
+			Attachment: lastEventID,
+		})
 	}
 
 	return resp, nil

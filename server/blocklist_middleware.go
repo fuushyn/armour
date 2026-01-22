@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/user/mcp-go-proxy/proxy"
 )
 
 const (
@@ -31,6 +33,8 @@ type BlocklistMiddleware struct {
 	cacheTime      time.Time
 	logger         Logger
 	rulesServerURL string // URL of external rules server (for instant updates)
+	communityRules []BlocklistRule
+	tracer         *proxy.TraceRecorder
 }
 
 // Logger interface for logging
@@ -50,16 +54,22 @@ func (n *noOpLogger) Warn(format string, args ...interface{})  {}
 func (n *noOpLogger) Error(format string, args ...interface{}) {}
 
 // NewBlocklistMiddleware creates a new blocklist middleware instance
-func NewBlocklistMiddleware(db *sql.DB, apiKey string, stats *StatsTracker, logger Logger) *BlocklistMiddleware {
+func NewBlocklistMiddleware(db *sql.DB, apiKey string, stats *StatsTracker, logger Logger, tracer *proxy.TraceRecorder) *BlocklistMiddleware {
 	if logger == nil {
 		logger = &noOpLogger{}
 	}
-	return &BlocklistMiddleware{
+	bm := &BlocklistMiddleware{
 		db:     db,
 		apiKey: apiKey,
 		stats:  stats,
 		logger: logger,
+		tracer: tracer,
 	}
+	bm.communityRules = loadCommunityRules(defaultCommunitySources(), logger)
+	if len(bm.communityRules) > 0 {
+		bm.logger.Info("loaded %d community blocklist rule(s)", len(bm.communityRules))
+	}
+	return bm
 }
 
 // SetRulesServerURL sets the URL for an external rules server
@@ -88,6 +98,11 @@ func (bm *BlocklistMiddleware) Check(method string, toolName string, args map[st
 	if err != nil {
 		bm.logger.Error("failed to get blocklist rules: %v", err)
 		return &BlocklistCheckResult{Allowed: true}, nil // Fail open for safety
+	}
+
+	// Merge in community rules (additive)
+	if len(bm.communityRules) > 0 {
+		rules = append(rules, bm.communityRules...)
 	}
 
 	// Check regex rules first (fast)
@@ -229,6 +244,15 @@ func (bm *BlocklistMiddleware) checkRegexRules(content string, toolName string, 
 				if bm.stats != nil {
 					bm.stats.RecordBlockedCall(toolName, fmt.Sprintf("regex_rule_%d:%s", rule.ID, rule.Pattern))
 				}
+				if bm.tracer != nil {
+					bm.tracer.Add(proxy.TraceEvent{
+						Stage:     "blocklist",
+						Server:    toolName,
+						Method:    method,
+						Transport: "proxy",
+						Detail:    fmt.Sprintf("regex rule %d matched", rule.ID),
+					})
+				}
 
 				return &BlocklistCheckResult{
 					Allowed:         false,
@@ -299,6 +323,15 @@ func (bm *BlocklistMiddleware) checkSemanticRules(content string, toolName strin
 
 				if bm.stats != nil {
 					bm.stats.RecordBlockedCall(toolName, fmt.Sprintf("semantic_rule_%d:%s", matchedRule.ID, matchedTopic))
+				}
+				if bm.tracer != nil {
+					bm.tracer.Add(proxy.TraceEvent{
+						Stage:     "blocklist",
+						Server:    toolName,
+						Method:    method,
+						Transport: "proxy",
+						Detail:    fmt.Sprintf("semantic rule %d matched topic %s", matchedRule.ID, matchedTopic),
+					})
 				}
 
 				return &BlocklistCheckResult{
@@ -432,7 +465,7 @@ Respond with ONLY valid JSON: {"blocked": true/false, "topic": "matched topic or
 		topicsStr, content)
 
 	payload := map[string]interface{}{
-		"model": "claude-3-5-haiku-20241022",
+		"model":      "claude-3-5-haiku-20241022",
 		"max_tokens": 100,
 		"messages": []map[string]interface{}{
 			{

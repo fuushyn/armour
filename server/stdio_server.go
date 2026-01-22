@@ -47,10 +47,11 @@ type StdioServer struct {
 	clientInfo  *proxy.ClientInfo
 	serverCaps  *proxy.Capabilities
 	clientCaps  *proxy.Capabilities
+	trace       *proxy.TraceRecorder
 }
 
 // NewStdioServer creates a new stdio-based MCP proxy server.
-func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker *StatsTracker, policyManager *PolicyManager, apiKey string) (*StdioServer, error) {
+func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker *StatsTracker, policyManager *PolicyManager, apiKey string, tracer *proxy.TraceRecorder) (*StdioServer, error) {
 	// Initialize database
 	db, err := initializeDB(config.DBPath)
 	if err != nil {
@@ -73,10 +74,13 @@ func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker 
 	toolRegistry := NewToolRegistry()
 
 	// Create backend manager (will use the shared tool registry)
-	backendManager := NewBackendManager(registry, logger, toolRegistry)
+	backendManager := NewBackendManager(registry, logger, toolRegistry, tracer)
 
 	// Create blocklist middleware
-	blocklist := NewBlocklistMiddleware(db, apiKey, statsTracker, logger)
+	if tracer == nil {
+		tracer = proxy.NewTraceRecorder(200)
+	}
+	blocklist := NewBlocklistMiddleware(db, apiKey, statsTracker, logger, tracer)
 
 	// Configure rules server URL if available (for instant rule updates)
 	if rulesURL := os.Getenv("ARMOUR_RULES_URL"); rulesURL != "" {
@@ -110,6 +114,7 @@ func NewStdioServer(config Config, registry *proxy.ServerRegistry, statsTracker 
 		scanner:        bufio.NewScanner(os.Stdin),
 		encoder:        json.NewEncoder(os.Stdout),
 		initialized:    false,
+		trace:          tracer,
 	}
 
 	return s, nil
@@ -720,8 +725,8 @@ func (s *StdioServer) handleProxyOpenDashboard(id interface{}) interface{} {
 // Note: This is called after servers have been detected via proxy:detect-servers tool.
 func (s *StdioServer) handleProxyMigrateConfig(id interface{}, args json.RawMessage) interface{} {
 	var params struct {
-		PolicyMode string                 `json:"policy_mode"`
-		Servers    []DetectedServer       `json:"servers,omitempty"`
+		PolicyMode string           `json:"policy_mode"`
+		Servers    []DetectedServer `json:"servers,omitempty"`
 	}
 
 	if err := json.Unmarshal(args, &params); err != nil {
@@ -763,9 +768,9 @@ func (s *StdioServer) handleCompletionComplete(ctx context.Context, request JSON
 	}
 
 	var params struct {
-		Ref       string      `json:"ref"`
-		Argument  interface{} `json:"argument,omitempty"`
-		MetaData  interface{} `json:"_meta,omitempty"`
+		Ref      string      `json:"ref"`
+		Argument interface{} `json:"argument,omitempty"`
+		MetaData interface{} `json:"_meta,omitempty"`
 	}
 
 	if err := json.Unmarshal(request.Params, &params); err != nil {

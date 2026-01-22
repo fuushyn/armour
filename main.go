@@ -114,12 +114,13 @@ func runStdioMode(ctx context.Context, config server.Config) error {
 	statsTracker := server.NewStatsTracker()
 	policyManager := server.NewPolicyManager(statsTracker)
 	logger := proxy.NewLogger(config.LogLevel)
+	traceRecorder := proxy.NewTraceRecorder(200)
 
 	// Get API key from environment (used for semantic blocklist matching)
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 
 	// 2. Create stdio server (which initializes database and blocklist)
-	stdioSrv, err := server.NewStdioServer(config, registry, statsTracker, policyManager, apiKey)
+	stdioSrv, err := server.NewStdioServer(config, registry, statsTracker, policyManager, apiKey, traceRecorder)
 	if err != nil {
 		return fmt.Errorf("failed to create stdio server: %v", err)
 	}
@@ -128,7 +129,7 @@ func runStdioMode(ctx context.Context, config server.Config) error {
 	// 2. Start Dashboard (Dual-Head)
 	// Bind to localhost for security, hardcoded port for now (as per architecture)
 	dashboardAddr := "127.0.0.1:13337"
-	dashboardSrv := dashboard.NewDashboardServer(dashboardAddr, registry, config.ConfigPath, statsTracker, policyManager, stdioSrv.GetBlocklist(), stdioSrv.GetToolRegistry(), stdioSrv.GetDB(), logger)
+	dashboardSrv := dashboard.NewDashboardServer(dashboardAddr, registry, config.ConfigPath, statsTracker, policyManager, stdioSrv.GetBlocklist(), stdioSrv.GetToolRegistry(), stdioSrv.GetDB(), logger, traceRecorder)
 
 	if err := dashboardSrv.Start(); err != nil {
 		log.Printf("Warning: failed to start dashboard: %v", err)
