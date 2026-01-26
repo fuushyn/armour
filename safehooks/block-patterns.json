@@ -1,0 +1,86 @@
+[
+  {
+    "pattern": "rm\\s+(-rf|-fr|--recursive)\\s+[\\/~]",
+    "level": 10,
+    "reason": "Recursive delete on root/home",
+    "category": "critical_deletion"
+  },
+  {
+    "pattern": "mkfs|dd\\s+if=.*of=\\/dev",
+    "level": 10,
+    "reason": "Disk format/overwrite",
+    "category": "disk_destruction"
+  },
+  {
+    "pattern": ">\\s*\\/dev\\/(sda|hda|nvme|disk)",
+    "level": 10,
+    "reason": "Direct disk write",
+    "category": "disk_destruction"
+  },
+  {
+    "pattern": "chmod\\s+-R\\s+777\\s+\\/",
+    "level": 9,
+    "reason": "Recursive permission change on root",
+    "category": "permission_escalation"
+  },
+  {
+    "pattern": ">\\s*\\/etc\\/(passwd|shadow|sudoers)",
+    "level": 10,
+    "reason": "Overwrite system auth files",
+    "category": "privilege_escalation"
+  },
+  {
+    "pattern": "sudo\\s+rm|sudo\\s+chmod|sudo\\s+chown.*\\/",
+    "level": 8,
+    "reason": "Privileged file operation",
+    "category": "privilege_escalation"
+  },
+  {
+    "pattern": ":\\(\\)\\{\\s*:\\|:&\\s*\\};:",
+    "level": 10,
+    "reason": "Fork bomb",
+    "category": "dos"
+  },
+  {
+    "pattern": "while\\s*(true|1|:).*do",
+    "level": 7,
+    "reason": "Infinite loop",
+    "category": "dos"
+  },
+  {
+    "pattern": "curl.*\\|\\s*(ba)?sh|wget.*\\|\\s*(ba)?sh",
+    "level": 8,
+    "reason": "Pipe to shell execution",
+    "category": "remote_code_exec"
+  },
+  {
+    "pattern": "eval\\s*\\(.*\\$|exec\\s*\\(.*\\$",
+    "level": 8,
+    "reason": "Dynamic code execution with variable",
+    "category": "code_injection"
+  },
+  {
+    "pattern": "curl.*-d.*\\$\\(cat|wget.*--post-data.*\\$\\(cat",
+    "level": 8,
+    "reason": "Exfiltrating file contents",
+    "category": "data_exfil"
+  },
+  {
+    "pattern": "nc\\s+-e|ncat\\s+-e|netcat.*-e",
+    "level": 9,
+    "reason": "Reverse shell via netcat",
+    "category": "reverse_shell"
+  },
+  {
+    "pattern": "crontab.*\\*(\\/|\\s)|\\*\\/\\d+\\s+\\*",
+    "level": 7,
+    "reason": "Cron job installation",
+    "category": "persistence"
+  },
+  {
+    "pattern": "xmrig|minerd|cgminer|cpuminer",
+    "level": 9,
+    "reason": "Crypto miner detected",
+    "category": "cryptomining"
+  }
+]

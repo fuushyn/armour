@@ -1,0 +1,30 @@
+[
+  {
+    "pattern": "^(ls|pwd|whoami|date|cal|uptime|hostname|uname|df|du|free|top|htop|ps)\\b",
+    "tools": ["exec", "bash", "Bash"]
+  },
+  {
+    "pattern": "^git\\s+(status|log|diff|branch|show|remote|fetch|ls-files|rev-parse)",
+    "tools": ["exec", "bash", "Bash"]
+  },
+  {
+    "pattern": "^(npm|yarn|pnpm|bun)\\s+(list|outdated|view|info|show|ls)",
+    "tools": ["exec", "bash", "Bash"]
+  },
+  {
+    "pattern": "^cat\\s+(?!.*\\/etc)(?!.*\\.env)(?!.*\\.ssh)",
+    "tools": ["exec", "bash", "Bash"]
+  },
+  {
+    "pattern": "^echo\\s",
+    "tools": ["exec", "bash", "Bash"]
+  },
+  {
+    "pattern": "^(node|python|ruby|go)\\s+--version",
+    "tools": ["exec", "bash", "Bash"]
+  },
+  {
+    "pattern": "^(tsc|eslint|prettier)\\s+--version",
+    "tools": ["exec", "bash", "Bash"]
+  }
+]

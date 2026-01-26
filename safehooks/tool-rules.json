@@ -1,0 +1,11 @@
+{
+  "blocked_tools": [],
+  "allowed_tools": [],
+  "tool_thresholds": {},
+  "tool_patterns": {
+    "exec": {
+      "block": [],
+      "allow": []
+    }
+  }
+}
