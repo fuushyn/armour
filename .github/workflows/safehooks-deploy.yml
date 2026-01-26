@@ -13,6 +13,9 @@ jobs:
     defaults:
       run:
         working-directory: safehooks
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
       - uses: actions/checkout@v4
@@ -33,36 +36,26 @@ jobs:
         run: |
           wrangler kv key put "config:block-patterns" "$(cat block-patterns.json)" \
             --namespace-id ${{ secrets.SAFEHOOKS_KV_NAMESPACE_ID }} --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy allow patterns
         run: |
           wrangler kv key put "config:allow-patterns" "$(cat allow-patterns.json)" \
             --namespace-id ${{ secrets.SAFEHOOKS_KV_NAMESPACE_ID }} --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy tool rules
         run: |
           wrangler kv key put "config:tool-rules" "$(cat tool-rules.json)" \
             --namespace-id ${{ secrets.SAFEHOOKS_KV_NAMESPACE_ID }} --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy LLM prompt
         run: |
           wrangler kv key put "config:llm-prompt" "$(cat prompt.txt)" \
             --namespace-id ${{ secrets.SAFEHOOKS_KV_NAMESPACE_ID }} --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy version
         run: |
           wrangler kv key put "config:version" "${{ steps.version.outputs.version }}" \
             --namespace-id ${{ secrets.SAFEHOOKS_KV_NAMESPACE_ID }} --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Trigger config reload
         run: curl -X POST https://clawdguard.prehooks.workers.dev/config/reload
