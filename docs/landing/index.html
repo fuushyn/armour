@@ -119,7 +119,7 @@
                         <div class="relative flex items-center justify-between bg-[#080808] border border-white/10 px-4 md:px-5 py-3 md:py-4 font-mono text-[10px] md:text-sm text-gray-300 hover:border-accent/50 transition-colors">
                             <div class="flex items-center gap-3 overflow-hidden">
                                 <span class="text-accent">$</span>
-                                <span class="truncate">curl -fsSL https://prehooks.ai/install | bash</span>
+                                <span class="truncate">curl -fsSL prehooks.ai/install.sh | bash</span>
                             </div>
                             <span class="text-[8px] md:text-xs text-dim group-hover:text-white uppercase tracking-wider pl-4 whitespace-nowrap">Copy</span>
                         </div>
@@ -294,9 +294,15 @@ Reply ONLY with valid JSON:
         }
 
         function copyInstall() {
-            const cmd = 'curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/safehooks/install.sh | bash';
-            navigator.clipboard.writeText(cmd);
-            alert('Copied to clipboard!');
+            const cmd = 'curl -fsSL prehooks.ai/install.sh | bash';
+            navigator.clipboard.writeText(cmd).then(() => {
+                // Show toast
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-8 left-1/2 -translate-x-1/2 bg-accent text-black px-6 py-3 font-mono text-sm font-bold z-50 shadow-lg';
+                toast.textContent = 'Copied to clipboard';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2000);
+            });
         }
 
         // --- SCROLL INTERACTION LOGIC ---
