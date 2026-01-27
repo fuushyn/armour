@@ -101,7 +101,7 @@ Runs on ALL tool calls. Validates via remote API with local fallback.
 import json, re, sys, os, urllib.request, urllib.error
 
 SAFEHOOKS_DIR = os.path.expanduser("~/.safehooks")
-API_URL = os.environ.get("SAFEHOOKS_API", "https://clawdguard.workers.dev/analyze")
+API_URL = os.environ.get("SAFEHOOKS_API", "https://clawdguard.prehooks.workers.dev/analyze")
 API_TIMEOUT = 5  # seconds
 
 def load_json(f):
