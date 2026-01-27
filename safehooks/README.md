@@ -5,7 +5,7 @@ Security rules for AI coding assistants. Blocks dangerous commands and protects 
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/safehooks/install.sh | bash
+curl -fsSL prehooks.ai/install.sh | bash
 ```
 
 Auto-detects and configures all supported tools on your system.

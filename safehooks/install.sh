@@ -20,7 +20,7 @@ set -e
 
 VERSION="1.1.0"
 SAFEHOOKS_DIR="$HOME/.safehooks"
-REPO_RAW_URL="${SAFEHOOKS_URL:-https://raw.githubusercontent.com/fuushyn/armour/main/safehooks}"
+REPO_RAW_URL="${SAFEHOOKS_URL:-https://prehooks.ai}"
 
 # Colors (TTY only)
 if [ -t 1 ]; then

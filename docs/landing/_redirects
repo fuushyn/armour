@@ -1,2 +1,5 @@
 /install.sh https://raw.githubusercontent.com/fuushyn/armour/main/safehooks/install.sh 200
 /install https://raw.githubusercontent.com/fuushyn/armour/main/safehooks/install.sh 200
+/block-patterns.json https://raw.githubusercontent.com/fuushyn/armour/main/safehooks/block-patterns.json 200
+/allow-patterns.json https://raw.githubusercontent.com/fuushyn/armour/main/safehooks/allow-patterns.json 200
+/tool-rules.json https://raw.githubusercontent.com/fuushyn/armour/main/safehooks/tool-rules.json 200
