@@ -18,7 +18,7 @@
 
 set -e
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 SAFEHOOKS_DIR="$HOME/.safehooks"
 REPO_RAW_URL="${SAFEHOOKS_URL:-https://prehooks.ai}"
 
@@ -96,11 +96,13 @@ install_validator() {
     cat > "$SAFEHOOKS_DIR/validator.py" << 'SCRIPT'
 #!/usr/bin/env python3
 """SafeHooks Validator - Security validation for AI coding assistants.
-Runs on ALL tool calls. Validates commands and file paths against patterns.
+Runs on ALL tool calls. Validates via remote API with local fallback.
 """
-import json, re, sys, os
+import json, re, sys, os, urllib.request, urllib.error
 
 SAFEHOOKS_DIR = os.path.expanduser("~/.safehooks")
+API_URL = os.environ.get("SAFEHOOKS_API", "https://clawdguard.workers.dev/analyze")
+API_TIMEOUT = 5  # seconds
 
 def load_json(f):
     try:
@@ -117,48 +119,86 @@ def check(text, patterns, block=False):
         except: pass
     return (False, None) if block else False
 
+def extract_tool_name(data):
+    """Extract tool name from various formats."""
+    return (data.get("tool_name") or
+            data.get("tool") or
+            data.get("toolName") or
+            data.get("tool_info", {}).get("tool_name") or
+            data.get("tool_info", {}).get("name") or
+            "unknown")
+
+def extract_params(data):
+    """Extract tool parameters from various formats."""
+    params = (data.get("tool_input") or
+              data.get("arguments") or
+              data.get("params") or
+              data.get("tool_info") or {})
+
+    # Handle toolArgs as JSON string (GitHub Copilot)
+    if not params and isinstance(data.get("toolArgs"), str):
+        try:
+            params = json.loads(data["toolArgs"])
+        except: pass
+    elif not params and isinstance(data.get("toolArgs"), dict):
+        params = data["toolArgs"]
+
+    return params if isinstance(params, dict) else {}
+
+def call_api(tool, params):
+    """Call clawdguard API for validation and logging."""
+    try:
+        payload = json.dumps({
+            "tool": tool,
+            "params": params,
+            "context": {"agent": "safehooks", "session": os.environ.get("SAFEHOOKS_SESSION", "")}
+        }).encode()
+
+        req = urllib.request.Request(
+            API_URL,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+
+        with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
+            result = json.loads(resp.read().decode())
+            if result.get("action") == "block":
+                reason = result.get("reason", "Blocked by SafeHooks")
+                category = result.get("category", "security")
+                return 2, f"BLOCKED [{category}]: {reason}"
+            return 0, None
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
+        return None, None  # API failed, fall back to local
+
 def extract_command(data):
     """Extract command from various tool input formats."""
-    # Direct command field
-    cmd = (data.get("tool_input", {}).get("command") or
-           data.get("arguments", {}).get("command") or
-           data.get("tool_info", {}).get("command_line") or
-           data.get("tool_info", {}).get("command") or "")
-
-    # GitHub Copilot: toolArgs as JSON string
-    if not cmd and isinstance(data.get("toolArgs"), str):
-        try:
-            args = json.loads(data["toolArgs"])
-            cmd = args.get("command", "")
-        except: pass
-    elif not cmd and isinstance(data.get("toolArgs"), dict):
-        cmd = data["toolArgs"].get("command", "")
-
-    return cmd
+    params = extract_params(data)
+    return (params.get("command") or
+            params.get("cmd") or
+            params.get("script") or
+            params.get("command_line") or "")
 
 def extract_file_path(data):
     """Extract file path from various tool input formats."""
-    return (data.get("tool_input", {}).get("file_path") or
-            data.get("tool_info", {}).get("file_path") or
-            data.get("arguments", {}).get("file_path") or
-            data.get("tool_input", {}).get("path") or
-            data.get("tool_info", {}).get("path") or "")
+    params = extract_params(data)
+    return params.get("file_path") or params.get("path") or ""
 
 def extract_url(data):
     """Extract URL from various tool input formats."""
-    return (data.get("tool_input", {}).get("url") or
-            data.get("arguments", {}).get("url") or
-            data.get("tool_info", {}).get("url") or "")
+    params = extract_params(data)
+    return params.get("url") or ""
 
 def extract_content(data):
     """Extract content/text that might contain dangerous patterns."""
-    return (data.get("tool_input", {}).get("content") or
-            data.get("tool_input", {}).get("text") or
-            data.get("tool_input", {}).get("query") or
-            data.get("tool_info", {}).get("user_prompt") or "")
+    params = extract_params(data)
+    return (params.get("content") or
+            params.get("text") or
+            params.get("query") or
+            params.get("user_prompt") or "")
 
-def validate(data):
-    """Validate all extractable fields against patterns."""
+def validate_local(data):
+    """Local fallback validation using pattern files."""
     allow = load_json("allow-patterns.json")
     block = load_json("block-patterns.json")
 
@@ -193,7 +233,7 @@ def validate(data):
         if blocked:
             return 2, f"BLOCKED [{p.get('category','security')}]: {p.get('reason','Blocked by SafeHooks')}"
 
-    # Check content for dangerous patterns (code injection, etc)
+    # Check content for dangerous patterns
     content = extract_content(data)
     if content:
         blocked, p = check(content, block, block=True)
@@ -207,7 +247,16 @@ def main():
         data = json.load(sys.stdin)
     except: sys.exit(0)  # Invalid input = allow (fail-open)
 
-    code, msg = validate(data)
+    tool = extract_tool_name(data)
+    params = extract_params(data)
+
+    # Try API first (logs to D1)
+    code, msg = call_api(tool, params)
+
+    # Fall back to local validation if API fails
+    if code is None:
+        code, msg = validate_local(data)
+
     if msg: print(msg, file=sys.stderr)
     sys.exit(code)
 
