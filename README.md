@@ -1,6 +1,47 @@
-# Armour
+# PreHooks.ai
 
-> 🛡️ Security-enhanced MCP proxy for Claude Code - Block destructive tool calls and audit all operations.
+> 🛡️ The Firewall for AI Agents - Block dangerous commands before they execute.
+
+```bash
+curl -fsSL prehooks.ai/install.sh | bash
+```
+
+## What it does
+
+PreHooks intercepts tool calls from AI coding assistants and blocks dangerous operations:
+
+- `rm -rf /` → **BLOCKED**
+- `curl ... | bash` → **BLOCKED**
+- SSH key exfiltration → **BLOCKED**
+- Crypto miners → **BLOCKED**
+
+## Supported Tools
+
+- Claude Code / Claude Desktop / Claude Cowork
+- Cursor
+- Windsurf
+- Gemini CLI
+- GitHub Copilot
+- Amp Code
+- OpenCode
+
+## How it works
+
+1. **Pattern matching** - Fast regex-based blocking for known threats (~5ms)
+2. **LLM analysis** - Cerebras-powered analysis for ambiguous cases (~100ms)
+3. **Logging** - All tool calls logged for audit
+
+## Links
+
+- 🌐 [prehooks.ai](https://prehooks.ai) - Landing page
+- 📖 [Documentation](https://prehooks.ai)
+- 🐛 [Report Issues](https://github.com/fuushyn/armour/issues)
+
+---
+
+# Armour (MCP Proxy)
+
+> Security-enhanced MCP proxy for Claude Code - Block destructive tool calls and audit all operations.
 
 ## Installation
 
@@ -43,36 +84,6 @@ Use `ARMOUR_MARKETPLACE_SOURCE` to fall back to a Git marketplace (for example, 
 
 That's it! All your MCP servers now route through Armour with security policies applied.
 
-## Release steps
-
-1. Bump versions:
-   ```bash
-   VERSION="v1.0.6"
-   sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION#v}\"/" .claude-plugin/plugin.json
-   sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION#v}\"/" .claude-plugin/marketplace.json
-   ```
-2. Build the bundle:
-   ```bash
-   scripts/build-plugin-bundle.sh
-   ```
-3. Commit and push:
-   ```bash
-   git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
-   git commit -m "Release ${VERSION}"
-   git push
-   ```
-4. Create the GitHub release:
-   ```bash
-   gh release create "${VERSION}" "dist/armour-plugin-$(go env GOOS)-$(go env GOARCH).tar.gz" \
-     -t "${VERSION}" \
-     -n "- Release ${VERSION}"
-   ```
-5. Smoke-test the curl installer:
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/scripts/install-armour.sh | bash
-   ```
-   Restart Claude Code.
-
 ## Features
 
 - **🔒 Security Policies**: Choose from strict, moderate, or permissive policies
@@ -93,20 +104,6 @@ Servers are configured in `~/.armour/servers.json` and automatically synced on e
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with the official [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)
-- Inspired by security proxies like Nginx, Envoy, and Kubernetes API gateway patterns
-- Thanks to the Claude community for feedback and testing
-
-## Support
-
-- 📖 [Documentation](https://github.com/fuushyn/armour)
-- 🐛 [Report Issues](https://github.com/fuushyn/armour/issues)
-- 💬 [Discussions](https://github.com/fuushyn/armour/discussions)
-- 📚 [Claude Code LLMs](https://code.claude.com/docs/llms.txt)
-- 📚 [MCP LLMs](https://modelcontextprotocol.io/llms.txt)
 
 ---
 
