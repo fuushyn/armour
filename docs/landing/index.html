@@ -323,29 +323,16 @@ Reply ONLY with valid JSON:
 
         async function fetchStats() {
             try {
-                // Fetch basic stats
-                const statsRes = await fetch(`${STATS_API}/stats`);
-                const stats = await statsRes.json();
-
-                // Fetch recent logs for p99 calculation
-                const logsRes = await fetch(`${STATS_API}/logs?limit=100`);
-                const logs = await logsRes.json();
+                const res = await fetch(`${STATS_API}/stats`);
+                const stats = await res.json();
 
                 // Update blocked count
-                const blocked = stats.blocked || 0;
-                document.getElementById('stat-blocked').textContent = blocked.toLocaleString();
+                document.getElementById('stat-blocked').textContent = (stats.blocked || 0).toLocaleString();
 
-                // Calculate average latency from recent logs
-                if (logs && logs.length > 0) {
-                    const latencies = logs.map(l => l.latency_ms).filter(l => l != null);
-                    if (latencies.length > 0) {
-                        const avg = Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length);
-                        document.getElementById('stat-latency').textContent = avg + 'ms';
-                    }
-                }
+                // Update avg latency from KV
+                document.getElementById('stat-latency').textContent = (stats.latency?.avg || 0) + 'ms';
             } catch (err) {
                 console.error('Stats fetch failed:', err);
-                // Show fallback
                 document.getElementById('stat-blocked').textContent = '—';
                 document.getElementById('stat-latency').textContent = '—';
             }
