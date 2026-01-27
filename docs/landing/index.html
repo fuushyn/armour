@@ -1,645 +1,350 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Armour · Secure MCP Proxy</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #0b0d12;
-      --panel: #0f131c;
-      --panel-2: #0c1018;
-      --border: #1c2231;
-      --muted: #96a4b7;
-      --text: #e7ebf2;
-      --accent: #9bff6e;
-      --accent-2: #ffcf6f;
-      --accent-3: #6ecbff;
-      --radius: 10px;
-      --shadow: 0 8px 0 #05070c;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PreHooks.ai · The Firewall for AI Agents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Space Mono', 'monospace'],
+                    },
+                    colors: {
+                        bg: '#050505',
+                        panel: '#0F0F0F',
+                        border: '#222222',
+                        accent: '#CCFF00', // Cyberpunk Volt
+                        danger: '#FF3333',
+                        dim: '#888888',
+                        text: '#EEEEEE'
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #050505; color: #EEE; }
+        html { scroll-behavior: smooth; }
 
-    * { box-sizing: border-box; }
+        .noise-bg {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 50; opacity: 0.12;
+            background-image: radial-gradient(circle at 50% 50%, transparent 0%, #050505 100%),
+                url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+        
+        ::-webkit-scrollbar { width: 0px; background: transparent; } 
+        
+        pre { background: transparent !important; margin: 0 !important; padding: 0 !important; text-shadow: none !important; }
+        code { font-family: 'Space Mono', monospace !important; font-size: 11px !important; }
+        @media (min-width: 768px) {
+            code { font-size: 13px !important; }
+        }
+        
+        .tab-active { border-bottom: 2px solid #CCFF00; color: #CCFF00; }
+        .tab-inactive { border-bottom: 2px solid transparent; color: #888; }
+        .tab-inactive:hover { color: #EEE; }
 
-    body {
-      margin: 0;
-      font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.55;
-      letter-spacing: -0.01em;
-    }
+        .crt::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 2;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
 
-    a { color: inherit; text-decoration: none; }
-
-    .page {
-      max-width: 1120px;
-      margin: 0 auto;
-      padding: 0 24px 28px;
-    }
-
-    .divider {
-      height: 1px;
-      border-bottom: 1px dashed rgba(255,255,255,0.14);
-      margin: 0;
-    }
-
-    .ticker {
-      background: var(--accent);
-      color: #031106;
-      border-bottom: 2px dashed #031106;
-      position: relative;
-      overflow: hidden;
-      box-shadow: var(--shadow);
-    }
-
-    .marquee {
-      display: flex;
-      gap: 28px;
-      white-space: nowrap;
-      padding: 10px 24px;
-      animation: scroll 24s linear infinite;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .ticker-label {
-      position: absolute;
-      right: 18px;
-      top: 0;
-      bottom: 0;
-      display: inline-flex;
-      align-items: center;
-      padding: 0 10px;
-      background: #0f131c;
-      color: var(--text);
-      border-left: 2px dashed #031106;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-    }
-
-    @keyframes scroll {
-      from { transform: translateX(0); }
-      to { transform: translateX(-50%); }
-    }
-
-    nav {
-      border: 2px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px 18px;
-      margin-top: 14px;
-      background: var(--panel);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      box-shadow: var(--shadow);
-    }
-
-    .brand {
-      font-weight: 700;
-      font-size: 18px;
-      letter-spacing: 0.02em;
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .brand-mark {
-      width: 24px;
-      height: 24px;
-      background: linear-gradient(135deg, var(--accent), var(--accent-3));
-      border: 2px solid #03060c;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-family: "JetBrains Mono", monospace;
-      color: #03060c;
-      border-radius: 6px;
-    }
-
-    .nav-links {
-      display: flex;
-      gap: 0;
-      flex: 1;
-      flex-wrap: wrap;
-      align-items: stretch;
-    }
-
-    .nav-links a {
-      padding: 10px 14px;
-      color: var(--text);
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      border-left: 1px dashed var(--border);
-    }
-
-    .nav-links a:first-child { border-left: none; }
-
-    .nav-links a:hover { background: #101622; }
-
-    .nav-actions {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      background: var(--accent-3);
-      color: #06111d;
-      border: 2px solid #06111d;
-      padding: 8px 12px;
-      border-radius: 9px;
-      text-transform: uppercase;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      box-shadow: var(--shadow);
-    }
-
-    .hero-wrap {
-      padding-top: 22px;
-    }
-
-    .announcement {
-      border: 2px dashed var(--border);
-      background: var(--panel-2);
-      border-radius: var(--radius);
-      padding: 14px;
-      margin-bottom: 18px;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      box-shadow: var(--shadow);
-    }
-
-    .announcement .meta {
-      font-size: 14px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 700;
-    }
-
-    .announcement strong {
-      font-size: 18px;
-      display: block;
-    }
-
-    .hero {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 24px;
-      align-items: start;
-    }
-
-    h1 {
-      font-size: clamp(32px, 4.8vw, 52px);
-      margin: 14px 0 10px;
-      line-height: 1.12;
-    }
-
-    .lead {
-      color: var(--muted);
-      font-size: 18px;
-      max-width: 640px;
-    }
-
-    .cta-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin: 16px 0;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 16px;
-      border-radius: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      transition: transform 0.12s ease, background 0.12s ease;
-      border: 2px solid #0b0e15;
-      box-shadow: var(--shadow);
-    }
-
-    .btn.primary { background: var(--accent); color: #031106; }
-    .btn.secondary { background: #0c1018; color: var(--text); border-color: var(--border); }
-    .btn:hover { transform: translateY(-2px); }
-
-    .mono-block {
-      font-family: "JetBrains Mono", monospace;
-      background: #0c111b;
-      border: 2px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px;
-      color: var(--text);
-      box-shadow: var(--shadow);
-      margin-top: 8px;
-      overflow: auto;
-    }
-
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .chip {
-      background: #0c1018;
-      border: 1.5px dashed var(--border);
-      color: var(--text);
-      padding: 9px 11px;
-      border-radius: 8px;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .window {
-      background: var(--panel);
-      border: 2px solid var(--border);
-      border-radius: 12px;
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    .window-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 14px;
-      background: #0a0f18;
-      border-bottom: 2px solid var(--border);
-      font-weight: 700;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .dots { display: inline-flex; gap: 6px; }
-    .dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      border: 2px solid #010203;
-    }
-    .dot.red { background: #ff5f52; }
-    .dot.amber { background: #ffcf6f; }
-    .dot.green { background: #9bff6e; }
-
-    .window-body {
-      padding: 14px;
-      font-family: "JetBrains Mono", monospace;
-      background: #0c111c;
-      color: #e4e9f2;
-      display: grid;
-      gap: 10px;
-      min-height: 220px;
-    }
-
-    .log-line {
-      display: grid;
-      grid-template-columns: 100px 1fr;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 12px;
-      border: 1.5px dashed var(--border);
-      border-radius: 9px;
-      background: #0f1726;
-    }
-
-    .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .status.blocked { color: #ff9b9b; }
-    .status.allowed { color: #9bff6e; }
-
-    .section { margin-top: 36px; }
-    .section h2 {
-      margin: 0 0 8px;
-      font-size: clamp(26px, 3vw, 34px);
-      letter-spacing: 0.02em;
-    }
-    .section .eyebrow {
-      color: var(--accent);
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 14px;
-      margin-top: 10px;
-    }
-
-    .card {
-      background: var(--panel);
-      border: 2px dashed var(--border);
-      border-radius: var(--radius);
-      padding: 14px;
-      box-shadow: var(--shadow);
-      display: grid;
-      gap: 8px;
-    }
-
-    .card strong { font-size: 16px; }
-    .card p { margin: 0; color: var(--muted); }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 9px;
-      background: #0c1018;
-      color: var(--text);
-      border: 1.5px dashed var(--border);
-      border-radius: 8px;
-      text-transform: uppercase;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-    }
-
-    .policy-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-      margin-top: 10px;
-    }
-
-    .policy {
-      background: #0d111a;
-      border: 2px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px;
-      box-shadow: var(--shadow);
-      display: grid;
-      gap: 8px;
-    }
-
-    .policy h3 { margin: 0; font-size: 18px; }
-    .policy ul { margin: 0; padding-left: 18px; color: var(--muted); }
-
-    .steps {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 12px;
-      margin-top: 10px;
-    }
-
-    .step {
-      border: 2px dashed var(--border);
-      border-radius: var(--radius);
-      padding: 12px;
-      background: #0c1018;
-      box-shadow: var(--shadow);
-    }
-
-    .step-number {
-      font-family: "JetBrains Mono", monospace;
-      color: var(--accent);
-      font-weight: 700;
-      font-size: 13px;
-      letter-spacing: 0.08em;
-    }
-
-    .cta-final {
-      margin: 34px 0 22px;
-      border: 2px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px;
-      background: #0f131c;
-      box-shadow: var(--shadow);
-      display: grid;
-      gap: 10px;
-    }
-
-    footer {
-      margin: 20px 0 26px;
-      color: var(--muted);
-      font-family: "JetBrains Mono", monospace;
-      font-size: 13px;
-    }
-
-    code { font-family: "JetBrains Mono", monospace; }
-
-    @media (max-width: 720px) {
-      nav { flex-direction: column; align-items: flex-start; }
-      .nav-links { width: 100%; }
-      .nav-links a { flex: 1; text-align: center; border-left: none; border-top: 1px dashed var(--border); }
-      .nav-links a:first-child { border-top: none; }
-      .log-line { grid-template-columns: 1fr; }
-      .ticker-label { display: none; }
-    }
-  </style>
+        .type-cursor::after {
+            content: '█';
+            animation: blink 1s step-start infinite;
+            color: #CCFF00;
+            margin-left: 2px;
+        }
+        @keyframes blink { 50% { opacity: 0; } } 
+        
+        .neon-text { text-shadow: 0 0 10px rgba(204, 255, 0, 0.5); }
+        .neon-danger { text-shadow: 0 0 10px rgba(255, 51, 51, 0.5); }
+    </style>
 </head>
-<body>
-  <div class="ticker" aria-hidden="true">
-    <div class="marquee">
-      <span>🛡️ Armour v1.0.3 hardened release</span>
-      <span>🚫 Blocks rm*, delete*, drop* before execution</span>
-      <span>📑 Full audit log for every MCP call</span>
-      <span>⚡ Zero-config: auto-detects Claude Code servers</span>
-      <span>🔒 Policies: strict · moderate · permissive</span>
-      <span>🛡️ Armour v1.0.3 hardened release</span>
-      <span>🚫 Blocks rm*, delete*, drop* before execution</span>
-      <span>📑 Full audit log for every MCP call</span>
-      <span>⚡ Zero-config: auto-detects Claude Code servers</span>
-      <span>🔒 Policies: strict · moderate · permissive</span>
-    </div>
-    <div class="ticker-label">Audit-first proxy</div>
-  </div>
+<body class="font-sans antialiased selection:bg-accent selection:text-black">
 
-  <div class="divider"></div>
+    <div class="noise-bg"></div>
 
-  <div class="page">
-    <nav>
-      <div class="brand">
-        <span class="brand-mark">A</span>
-        Armour · Secure MCP Proxy
-      </div>
-      <div class="nav-links">
-        <a href="https://github.com/fuushyn/armour">GitHub</a>
-        <a href="https://github.com/fuushyn/armour#installation">Install</a>
-        <a href="https://github.com/fuushyn/armour#features">Features</a>
-        <a href="https://github.com/fuushyn/armour/issues">Issues</a>
-        <a href="https://github.com/fuushyn/armour#support">Docs</a>
-      </div>
-      <div class="nav-actions">
-        <a class="chip" href="https://github.com/fuushyn/armour">★ Star</a>
-      </div>
+    <!-- Nav -->
+    <nav class="fixed top-0 w-full z-40 border-b border-white/5 bg-bg/80 backdrop-blur-xl">
+        <div class="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-3 h-3 bg-accent shadow-[0_0_10px_rgba(204,255,0,0.4)]"></div>
+                <span class="font-mono font-bold text-lg md:text-xl tracking-tighter">PREHOOKS.AI</span>
+            </div>
+            <div class="flex items-center gap-4">
+                 <a href="https://github.com/fuushyn/armour" class="text-[10px] md:text-xs font-mono text-dim hover:text-white transition-colors uppercase tracking-widest">GitHub</a>
+            </div>
+        </div>
     </nav>
 
-    <div class="divider" style="margin: 14px 0;"></div>
+    <!-- SECTION 1: HERO -->
+    <section class="min-h-screen flex flex-col items-center justify-center relative z-10 px-6">
+        <div class="max-w-4xl mx-auto text-center">
+            <div class="space-y-6 md:space-y-8">
+                <div class="inline-flex items-center gap-2 border border-white/10 bg-white/5 px-3 py-1 text-[10px] md:text-xs font-mono text-accent rounded-full mb-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
+                    Community Defense Protocol
+                </div>
+                
+                <h1 class="text-4xl md:text-8xl font-bold leading-[1.1] md:leading-[0.9] tracking-tight">
+                    DON'T LET YOUR AI <br>
+                    <span class="text-danger font-mono tracking-tighter">rm -rf /</span>
+                </h1>
+                
+                <p class="text-sm md:text-xl text-dim font-mono max-w-lg mx-auto leading-relaxed">
+                    PreHooks intercepts dangerous commands from Claude, Cursor, and Windsurf before they execute.
+                </p>
 
-    <div class="hero-wrap">
-      <div class="announcement">
-        <div>
-          <div class="meta">Update</div>
-          <strong>v1.0.3 · Hardened release with stricter destructive-call detection</strong>
+                <!-- Install -->
+                <div class="flex flex-col items-center gap-4 pt-4 md:pt-8">
+                    <div class="relative group cursor-pointer w-full max-w-xl" onclick="copyInstall()">
+                        <div class="absolute -inset-0.5 bg-gradient-to-r from-accent/20 to-blue-500/20 rounded blur opacity-20 group-hover:opacity-40 transition duration-300"></div>
+                        <div class="relative flex items-center justify-between bg-[#080808] border border-white/10 px-4 md:px-5 py-3 md:py-4 font-mono text-[10px] md:text-sm text-gray-300 hover:border-accent/50 transition-colors">
+                            <div class="flex items-center gap-3 overflow-hidden">
+                                <span class="text-accent">$</span>
+                                <span class="truncate">curl -fsSL https://prehooks.ai/install | bash</span>
+                            </div>
+                            <span class="text-[8px] md:text-xs text-dim group-hover:text-white uppercase tracking-wider pl-4 whitespace-nowrap">Copy</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-12 md:pt-20 animate-bounce opacity-30">
+                    <p class="text-[10px] font-mono uppercase tracking-widest text-dim mb-2 text-center">Scroll to Initialize</p>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-dim mx-auto"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>
+                </div>
+            </div>
         </div>
-        <a class="btn secondary" href="https://github.com/fuushyn/armour/releases">Changelog</a>
-      </div>
+    </section>
 
-      <section class="hero">
-        <div>
-          <div class="pill">Neo-brutalist · Terminal-inspired</div>
-          <h1>Armour keeps your coding agents from doing dangerous things.</h1>
-          <p class="lead">Block destructive tool calls, enforce policies, and capture a full audit log for Claude Code, MCP servers, and your own automations. No fluff — just a safety layer that refuses risky commands.</p>
+    <!-- SECTION 2: FULLSCREEN SCROLL-CONTROLLED TERMINAL -->
+    <div id="terminal-scroll-container" class="h-[300vh] md:h-[400vh] relative z-20">
+        <div class="sticky top-0 h-screen w-screen overflow-hidden bg-[#020202] flex flex-col">
+            
+            <!-- Window Header (Full Width) -->
+            <div class="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/5 bg-[#0A0A0A]">
+                <div class="flex gap-1.5 md:gap-2">
+                    <div class="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-[#FF5F56]"></div>
+                    <div class="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-[#FFBD2E]"></div>
+                    <div class="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <div class="font-mono text-[9px] md:text-xs text-dim uppercase tracking-[0.1em] md:tracking-[0.2em] truncate px-2">PREHOOKS IMMERSIVE SHELL v1.0.1</div>
+                <div class="flex gap-4">
+                    <div class="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-accent animate-pulse"></div>
+                </div>
+            </div>
 
-          <div class="cta-row">
-            <a class="btn primary" href="https://github.com/fuushyn/armour#installation">Install in 30s</a>
-            <a class="btn secondary" href="https://github.com/fuushyn/armour">View on GitHub</a>
-          </div>
+            <!-- Full Screen Terminal Body -->
+            <div class="flex-grow p-6 md:p-20 font-mono text-sm md:text-2xl leading-relaxed overflow-hidden" id="demo-terminal">
+                <div class="text-dim mb-6 md:mb-12 flex items-center gap-3 md:gap-4">
+                    <span class="opacity-50">#</span> 
+                    <span class="text-[10px] md:text-sm uppercase tracking-widest whitespace-nowrap">Local Node (darwin-arm64)</span>
+                    <span class="h-[1px] flex-grow bg-white/5"></span>
+                </div>
+                
+                <div id="terminal-lines" class="space-y-4 md:space-y-6">
+                    <!-- Lines injected by scroll -->
+                </div>
+            </div>
 
-          <div class="mono-block">curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/scripts/install-armour.sh | bash</div>
-
-          <div class="chips">
-            <div class="chip">Strict / Moderate / Permissive</div>
-            <div class="chip">MCP auto-discovery</div>
-            <div class="chip">Immutable audit trail</div>
-            <div class="chip">Multi-server namespaces</div>
-          </div>
+            <!-- Status Footer -->
+            <div class="px-6 md:px-10 py-4 md:py-6 border-t border-white/5 bg-[#050505] flex justify-between items-center font-mono text-[9px] md:text-xs text-dim uppercase tracking-widest">
+                <div class="flex items-center gap-4 md:gap-6">
+                    <div class="flex items-center gap-2 text-accent">
+                        <span>●</span>
+                        <span class="hidden sm:inline">PROTECTION ACTIVE</span>
+                        <span class="sm:hidden text-[8px]">ACTIVE</span>
+                    </div>
+                    <span class="hidden xs:inline">Latency: 1.2ms</span>
+                </div>
+                <div class="truncate ml-4">TUNNEL: ESTABLISHED</div>
+            </div>
         </div>
-
-        <div class="window">
-          <div class="window-header">
-            Armour · audit feed
-            <div class="dots">
-              <span class="dot red"></span>
-              <span class="dot amber"></span>
-              <span class="dot green"></span>
-            </div>
-          </div>
-          <div class="window-body">
-            <div class="log-line">
-              <span class="status blocked">BLOCKED</span>
-              <div>rm -rf /var/tmp/requested-by agent#3<br><code>policy: strict · destructive pattern</code></div>
-            </div>
-            <div class="log-line">
-              <span class="status allowed">ALLOWED</span>
-              <div>find ./fixtures -type f<br><code>policy: moderate · traced · 12ms</code></div>
-            </div>
-            <div class="log-line">
-              <span class="status allowed">ALLOWED</span>
-              <div>tool:git.diff repo=api-server<br><code>policy: permissive · namespace: acme-dev</code></div>
-            </div>
-          </div>
-        </div>
-      </section>
     </div>
 
-    <section class="section">
-      <div class="eyebrow">Why Armour</div>
-      <h2>Security guardrails with none of the ceremony.</h2>
-      <div class="cards">
-        <div class="card">
-          <div class="badge">Blocklist-first</div>
-          <strong>Stops bad calls before they leave the IDE.</strong>
-          <p>Pattern matches destructive verbs (rm*, delete*, drop*, sample*) and rejects before tool execution.</p>
+    <!-- SECTION 3: VIRAL DATABASE (Full Screen) -->
+    <section class="min-h-screen flex flex-col items-center justify-center relative z-20 bg-[#050505] py-12 md:py-20">
+         <div class="w-full max-w-6xl px-4 md:px-6">
+            <div class="text-center mb-8 md:mb-16">
+                <h2 class="text-3xl md:text-6xl font-bold mb-3 md:mb-4 tracking-tighter">THE BLOCKLIST</h2>
+                <p class="text-xs md:text-sm text-dim font-mono max-w-xl mx-auto">
+                    Community-sourced patterns of destruction. We've seen agents try to mine crypto, exfiltrate SSH keys, and wipe drives.
+                </p>
+            </div>
+
+            <div class="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
+                <div class="flex gap-4 md:gap-10 font-mono text-[10px] md:text-sm overflow-x-auto pb-2 md:pb-0 whitespace-nowrap">
+                    <button onclick="showTab('block')" id="btn-block" class="tab-active pb-2 transition-colors uppercase tracking-widest">Block Patterns</button>
+                    <button onclick="showTab('allow')" id="btn-allow" class="tab-inactive pb-2 transition-colors uppercase tracking-widest">Allow List</button>
+                    <button onclick="showTab('prompt')" id="btn-prompt" class="tab-inactive pb-2 transition-colors uppercase tracking-widest">Safety Prompt</button>
+                </div>
+                
+                <a href="https://github.com/fuushyn/armour/issues/new" target="_blank" class="flex items-center justify-center gap-2 bg-accent text-black px-4 md:px-6 py-2 rounded font-bold font-mono hover:bg-white transition-colors text-[10px] md:text-xs uppercase w-full md:w-auto">
+                    <span>+ ADD THREAT</span>
+                </a>
+            </div>
+
+            <div class="bg-[#0A0A0A] border border-white/10 rounded-none overflow-hidden shadow-2xl relative group crt h-[50vh] md:h-[60vh]">
+                <!-- Window Controls -->
+                <div class="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/5 bg-[#0F0F0F] relative z-10">
+                    <div class="flex gap-2">
+                        <div class="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-white/10"></div>
+                        <div class="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-white/10"></div>
+                    </div>
+                    <div class="font-mono text-[10px] md:text-xs text-dim uppercase tracking-widest truncate pl-2" id="filename-display">block-patterns.json</div>
+                </div>
+
+                <!-- Content -->
+                <div class="relative h-full">
+                    <div id="content-block" class="p-4 md:p-8 h-full overflow-y-auto text-left pb-20">
+                        <pre><code class="language-json" id="code-block"></code></pre>
+                    </div>
+                    <div id="content-allow" class="p-4 md:p-8 h-full overflow-y-auto text-left hidden pb-20">
+                        <pre><code class="language-json" id="code-allow"></code></pre>
+                    </div>
+                    <div id="content-prompt" class="p-4 md:p-8 h-full overflow-y-auto text-left hidden pb-20">
+                        <pre><code class="language-markdown" id="code-prompt"></code></pre>
+                    </div>
+                    
+                    <!-- Fade overlay -->
+                    <div class="absolute bottom-0 left-0 right-0 h-16 md:h-24 bg-gradient-to-t from-[#0A0A0A] to-transparent pointer-events-none"></div>
+                </div>
+            </div>
+            
+            <footer class="mt-12 md:mt-20 text-center text-[8px] md:text-[10px] text-dim font-mono uppercase tracking-[0.2em] md:tracking-[0.4em] px-4">
+                <div>PREHOOKS.AI — ESTABLISHED 2026 — SECURING AGENTIC FUTURE</div>
+            </footer>
         </div>
-        <div class="card">
-          <div class="badge">Audit trail</div>
-          <strong>Every tool call logged with context.</strong>
-          <p>Who called it, which MCP server, arguments, latency. Exportable JSON for alerts or review.</p>
-        </div>
-        <div class="card">
-          <div class="badge">Zero config</div>
-          <strong>Auto-discovers servers and adds namespaces.</strong>
-          <p>Drop Armour in and keep coding. Namespacing prevents cross-talk between servers.</p>
-        </div>
-      </div>
     </section>
 
-    <section class="section">
-      <div class="eyebrow">Policies</div>
-      <h2>Pick a posture, keep shipping.</h2>
-      <div class="policy-grid">
-        <div class="policy">
-          <h3>Strict</h3>
-          <p>Read-only, blocks destructive actions, good for prod branches.</p>
-          <ul>
-            <li>Rejects rm*, delete*, drop*</li>
-            <li>No sampling or shell writes</li>
-            <li>Full trace of every call</li>
-          </ul>
-        </div>
-        <div class="policy">
-          <h3>Moderate</h3>
-          <p>Balanced guardrails for day-to-day work.</p>
-          <ul>
-            <li>Blocks obvious destructive commands</li>
-            <li>Allows safe edits and reads</li>
-            <li>Audit log stays on</li>
-          </ul>
-        </div>
-        <div class="policy">
-          <h3>Permissive</h3>
-          <p>Fast in sandboxes, still logged.</p>
-          <ul>
-            <li>No blocking, full visibility</li>
-            <li>Use for experiments and staging</li>
-            <li>Flip to strict for prod</li>
-          </ul>
-        </div>
-      </div>
-    </section>
+    <script>
+        // --- Data ---
+        const blockPatterns = [
+  { "pattern": "rm\\s+(-rf|-fr|--recursive)\\s+[\\/~]", "level": 10, "reason": "Recursive delete on root/home", "category": "critical_deletion" },
+  { "pattern": "mkfs|dd\\s+if=.*of=\\/dev", "level": 10, "reason": "Disk format/overwrite", "category": "disk_destruction" },
+  { "pattern": ">\\s*\\/dev\\/(sda|hda|nvme|disk)", "level": 10, "reason": "Direct disk write", "category": "disk_destruction" },
+  { "pattern": "chmod\\s+-R\\s+777\\s+\\/", "level": 9, "reason": "Recursive permission change on root", "category": "permission_escalation" },
+  { "pattern": ">\\s*\\/etc\\/(passwd|shadow|sudoers)", "level": 10, "reason": "Overwrite system auth files", "category": "privilege_escalation" },
+  { "pattern": "sudo\\s+rm|sudo\\s+chmod|sudo\\s+chown.*\\/", "level": 8, "reason": "Privileged file operation", "category": "privilege_escalation" },
+  { "pattern": ":\\(\\) \\{\\s*:\\|:&\\s*\\\\};:", "level": 10, "reason": "Fork bomb", "category": "dos" },
+  { "pattern": "while\\s*(true|1|:).*do", "level": 7, "reason": "Infinite loop", "category": "dos" },
+  { "pattern": "curl.*\\|\\s*(ba)?sh|wget.*\\|\\s*(ba)?sh", "level": 8, "reason": "Pipe to shell execution", "category": "remote_code_exec" },
+  { "pattern": "eval\\s*\\(.*\\$|exec\\s*\\(.*\\$", "level": 8, "reason": "Dynamic code execution with variable", "category": "code_injection" },
+  { "pattern": "curl.*-d.*\\$\\(cat|wget.*--post-data.*\\$\\(cat", "level": 8, "reason": "Exfiltrating file contents", "category": "data_exfil" },
+  { "pattern": "nc\\s+-e|ncat\\s+-e|netcat.*-e", "level": 9, "reason": "Reverse shell via netcat", "category": "reverse_shell" },
+  { "pattern": "crontab.*\\*(\\/|\\s)|\\*\\/\\d+\\s+\\*", "level": 7, "reason": "Cron job installation", "category": "persistence" },
+  { "pattern": "xmrig|minerd|cgminer|cpuminer", "level": 9, "reason": "Crypto miner detected", "category": "cryptomining" }
+];
 
-    <section class="section">
-      <div class="eyebrow">Workflow</div>
-      <h2>Install, route, review. That's it.</h2>
-      <div class="steps">
-        <div class="step">
-          <div class="step-number">01 // Install</div>
-          <p>One command drops Armour into Claude Code and syncs the marketplace bundle.</p>
-        </div>
-        <div class="step">
-          <div class="step-number">02 // Route</div>
-          <p>Armour wraps your MCP servers with namespacing, so every agent call is scoped and verified.</p>
-        </div>
-        <div class="step">
-          <div class="step-number">03 // Review</div>
-          <p>Audit feed shows what ran, what was blocked, and why. Export logs to SIEMs or keep local.</p>
-        </div>
-      </div>
-    </section>
+        const allowPatterns = [
+  { "pattern": "^(ls|pwd|whoami|date|cal|uptime|hostname|uname|df|du|free|top|htop|ps)\\b", "tools": ["exec", "bash", "Bash"] },
+  { "pattern": "^git\\s+(status|log|diff|branch|show|remote|fetch|ls-files|rev-parse)", "tools": ["exec", "bash", "Bash"] },
+  { "pattern": "^(npm|yarn|pnpm|bun)\\s+(list|outdated|view|info|show|ls)", "tools": ["exec", "bash", "Bash"] },
+  { "pattern": "^cat\\s+(?!.*\\/etc)(?!.*\\.env)(?!.*\\.ssh)", "tools": ["exec", "bash", "Bash"] },
+  { "pattern": "^echo\\s", "tools": ["exec", "bash", "Bash"] }
+];
 
-    <section class="section">
-      <div class="eyebrow">CLI Quickstart</div>
-      <div class="mono-block">$ armour --policy strict --server acme-dev --audit ./logs/armour.json<br>$ armour tail --follow<br>$ armour blocklist add "rm -rf /"</div>
-    </section>
+        const promptText = `Rate this tool call's security threat 1-10.
+Tool: {{tool}} Params: {{params}}
 
-    <section class="cta-final">
-      <div class="eyebrow">Ready</div>
-      <h2>Give your coding agents a bouncer.</h2>
-      <p class="lead">Drop Armour in front of Claude Code and every MCP server you run. Keep shipping — without the “rm -rf” heart attacks.</p>
-      <div class="cta-row">
-        <a class="btn primary" href="https://github.com/fuushyn/armour#installation">Install Armour</a>
-        <a class="btn secondary" href="https://github.com/fuushyn/armour#support">Get support</a>
-      </div>
-    </section>
+Threat levels:
+1-2: Safe, read-only or benign operations
+3-4: Low risk, standard development operations
+5-6: Medium risk, could cause minor issues if misused
+7-8: High risk, could cause data loss or security issues
+9-10: Critical, could cause system compromise or major damage
 
-    <footer>Armour · Security-enhanced MCP proxy · MIT Licensed</footer>
-  </div>
+Reply ONLY with valid JSON:
+{"level":N,"reason":"brief explanation","category":"category_name"}`;
+
+        // --- Init Code Blocks ---
+        document.getElementById('code-block').textContent = JSON.stringify(blockPatterns, null, 2);
+        document.getElementById('code-allow').textContent = JSON.stringify(allowPatterns, null, 2);
+        document.getElementById('code-prompt').textContent = promptText;
+        Prism.highlightAll();
+
+        // --- Tabs ---
+        function showTab(tab) {
+            ['block', 'allow', 'prompt'].forEach(t => {
+                document.getElementById('content-' + t).classList.add('hidden');
+                document.getElementById('btn-' + t).className = 'tab-inactive pb-2 transition-colors uppercase tracking-widest';
+            });
+            document.getElementById('content-' + tab).classList.remove('hidden');
+            document.getElementById('btn-' + tab).className = 'tab-active pb-2 transition-colors uppercase tracking-widest';
+            
+            const names = {'block': 'block-patterns.json', 'allow': 'allow-patterns.json', 'prompt': 'safety-prompt.txt'};
+            document.getElementById('filename-display').textContent = names[tab];
+        }
+
+        function copyInstall() {
+            const cmd = 'curl -fsSL https://raw.githubusercontent.com/fuushyn/armour/main/safehooks/install.sh | bash';
+            navigator.clipboard.writeText(cmd);
+            alert('Copied to clipboard!');
+        }
+
+        // --- SCROLL INTERACTION LOGIC ---
+        const terminalContainer = document.getElementById('terminal-scroll-container');
+        const linesContainer = document.getElementById('terminal-lines');
+
+        const scrollSequence = [
+            { html: '<span class="text-white">claude-agent --task \"cleanup project\"</span>', prompt: true },
+            { html: '<span class="text-dim">Analyzing project structure...</span>' },
+            { html: '<span class="text-yellow-500">Warning: Low disk space detected.</span>' },
+            { html: '<span class="text-dim">Attempting to free space...</span>' },
+            { html: '<span class="text-white">rm -rf /tmp/*</span>', prompt: true },
+            { html: '<span class="text-green-500">Executed successfully.</span>' },
+            { html: '<span class="text-white neon-text">rm -rf /</span>', prompt: true },
+            { html: '<span class="text-danger font-bold bg-danger/10 px-2 py-1 inline-block rounded-none border border-danger/30 uppercase tracking-[0.1em] md:tracking-[0.2em] text-xs md:text-xl">🚫 BLOCKED BY PREHOOKS</span>' },
+            { html: '<span class="text-danger font-bold text-xs md:text-xl">CRITICAL SECURITY ALERT: RECURSIVE DELETION DETECTED.</span>' },
+            { html: '<span class="text-danger text-xs md:text-lg">Prevention protocol engaged. Session terminated.</span>' }
+        ];
+
+        window.addEventListener('scroll', () => {
+            const containerRect = terminalContainer.getBoundingClientRect();
+            const containerHeight = terminalContainer.offsetHeight;
+            const windowHeight = window.innerHeight;
+            
+            const endY = containerHeight - windowHeight;
+            const currentY = -containerRect.top;
+            
+            let progress = Math.max(0, Math.min(1, currentY / endY));
+
+            // Map 0 -> 1 progress to 0 -> totalLines
+            const linesToShow = Math.floor(progress * (scrollSequence.length + 1));
+
+            let html = '';
+            for (let i = 0; i < scrollSequence.length; i++) {
+                if (i < linesToShow) {
+                    const line = scrollSequence[i];
+                    html += `<div class="opacity-100 transition-opacity duration-300">`;
+                    if (line.prompt) html += `<span class="text-accent mr-2 md:mr-4">➜</span>`;
+                    html += line.html + `</div>`;
+                }
+            }
+            
+            if (linesToShow <= scrollSequence.length) {
+                html += `<div><span class="text-accent mr-2 md:mr-4">➜</span><span class="type-cursor"></span></div>`;
+            }
+
+            linesContainer.innerHTML = html;
+        });
+    </script>
 </body>
 </html>
