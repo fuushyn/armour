@@ -7,6 +7,7 @@ const PROXY_PATHS = {
   '/block-patterns.json': '/block-patterns.json',
   '/allow-patterns.json': '/allow-patterns.json',
   '/tool-rules.json': '/tool-rules.json',
+  '/prompt.txt': '/prompt.txt',
 };
 
 export default {
