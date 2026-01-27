@@ -112,6 +112,19 @@
                     PreHooks intercepts dangerous commands from Claude, Cursor, and Windsurf before they execute.
                 </p>
 
+                <!-- Live Stats -->
+                <div class="flex items-center justify-center gap-6 md:gap-12 pt-4 md:pt-8">
+                    <div class="text-center">
+                        <div class="text-2xl md:text-5xl font-bold font-mono text-danger neon-danger" id="stat-blocked">—</div>
+                        <div class="text-[8px] md:text-xs text-dim font-mono uppercase tracking-widest mt-1">Threats Blocked</div>
+                    </div>
+                    <div class="w-px h-12 md:h-16 bg-white/10"></div>
+                    <div class="text-center">
+                        <div class="text-2xl md:text-5xl font-bold font-mono text-accent neon-text" id="stat-latency">—</div>
+                        <div class="text-[8px] md:text-xs text-dim font-mono uppercase tracking-widest mt-1">P99 Latency</div>
+                    </div>
+                </div>
+
                 <!-- Install -->
                 <div class="flex flex-col items-center gap-4 pt-4 md:pt-8">
                     <div class="relative group cursor-pointer w-full max-w-xl" onclick="copyInstall()">
@@ -304,6 +317,44 @@ Reply ONLY with valid JSON:
                 setTimeout(() => toast.remove(), 2000);
             });
         }
+
+        // --- LIVE STATS ---
+        const STATS_API = 'https://clawdguard.prehooks.workers.dev';
+
+        async function fetchStats() {
+            try {
+                // Fetch basic stats
+                const statsRes = await fetch(`${STATS_API}/stats`);
+                const stats = await statsRes.json();
+
+                // Fetch recent logs for p99 calculation
+                const logsRes = await fetch(`${STATS_API}/logs?limit=100`);
+                const logs = await logsRes.json();
+
+                // Update blocked count
+                const blocked = stats.blocked || 0;
+                document.getElementById('stat-blocked').textContent = blocked.toLocaleString();
+
+                // Calculate p99 latency from recent logs
+                if (logs && logs.length > 0) {
+                    const latencies = logs.map(l => l.latency_ms).filter(l => l != null).sort((a, b) => a - b);
+                    if (latencies.length > 0) {
+                        const p99Index = Math.floor(latencies.length * 0.99);
+                        const p99 = latencies[Math.min(p99Index, latencies.length - 1)];
+                        document.getElementById('stat-latency').textContent = p99 + 'ms';
+                    }
+                }
+            } catch (err) {
+                console.error('Stats fetch failed:', err);
+                // Show fallback
+                document.getElementById('stat-blocked').textContent = '—';
+                document.getElementById('stat-latency').textContent = '—';
+            }
+        }
+
+        // Fetch stats on load and every 30s
+        fetchStats();
+        setInterval(fetchStats, 30000);
 
         // --- SCROLL INTERACTION LOGIC ---
         const terminalContainer = document.getElementById('terminal-scroll-container');
