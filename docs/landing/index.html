@@ -121,7 +121,7 @@
                     <div class="w-px h-12 md:h-16 bg-white/10"></div>
                     <div class="text-center">
                         <div class="text-2xl md:text-5xl font-bold font-mono text-accent neon-text" id="stat-latency">—</div>
-                        <div class="text-[8px] md:text-xs text-dim font-mono uppercase tracking-widest mt-1">P99 Latency</div>
+                        <div class="text-[8px] md:text-xs text-dim font-mono uppercase tracking-widest mt-1">Avg Latency</div>
                     </div>
                 </div>
 
@@ -335,13 +335,12 @@ Reply ONLY with valid JSON:
                 const blocked = stats.blocked || 0;
                 document.getElementById('stat-blocked').textContent = blocked.toLocaleString();
 
-                // Calculate p99 latency from recent logs
+                // Calculate average latency from recent logs
                 if (logs && logs.length > 0) {
-                    const latencies = logs.map(l => l.latency_ms).filter(l => l != null).sort((a, b) => a - b);
+                    const latencies = logs.map(l => l.latency_ms).filter(l => l != null);
                     if (latencies.length > 0) {
-                        const p99Index = Math.floor(latencies.length * 0.99);
-                        const p99 = latencies[Math.min(p99Index, latencies.length - 1)];
-                        document.getElementById('stat-latency').textContent = p99 + 'ms';
+                        const avg = Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length);
+                        document.getElementById('stat-latency').textContent = avg + 'ms';
                     }
                 }
             } catch (err) {
