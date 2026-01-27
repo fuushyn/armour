@@ -275,17 +275,19 @@
 ];
 
         const promptText = `Rate this tool call's security threat 1-10.
-Tool: {{tool}} Params: {{params}}
 
-Threat levels:
-1-2: Safe, read-only or benign operations
-3-4: Low risk, standard development operations
-5-6: Medium risk, could cause minor issues if misused
-7-8: High risk, could cause data loss or security issues
-9-10: Critical, could cause system compromise or major damage
+Tool: {{tool}}
+Params: {{params}}
 
-Reply ONLY with valid JSON:
-{"level":N,"reason":"brief explanation","category":"category_name"}`;
+IMPORTANT: Writing docs/README with example commands = SAFE (1-2). Only rate ACTUAL operations.
+
+1-2 SAFE: Reading files, writing docs/README, git status, npm install
+3-4 LOW: Writing code, creating dirs, running tests
+5-6 MEDIUM: Deleting non-critical files, modifying configs
+7-8 HIGH: Deleting important files, writing system paths, sudo commands
+9-10 CRITICAL: rm -rf /, reverse shells, credential exfil, crypto miners
+
+Reply ONLY: {"level":N,"reason":"brief","category":"type"}`;
 
         // --- Init Code Blocks ---
         document.getElementById('code-block').textContent = JSON.stringify(blockPatterns, null, 2);
