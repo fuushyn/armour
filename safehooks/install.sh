@@ -145,6 +145,16 @@ def extract_params(data):
 
     return params if isinstance(params, dict) else {}
 
+def format_block_msg(reason, category):
+    """Format block message with branding."""
+    return f"""
+🛡️  BLOCKED by PreHooks.ai [{category}]
+    {reason}
+
+    Wrong call? Report: https://github.com/fuushyn/armour/issues
+    Docs: https://prehooks.ai
+"""
+
 def call_api(tool, params):
     """Call clawdguard API for validation and logging."""
     try:
@@ -164,9 +174,9 @@ def call_api(tool, params):
         with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
             result = json.loads(resp.read().decode())
             if result.get("action") == "block":
-                reason = result.get("reason", "Blocked by SafeHooks")
+                reason = result.get("reason", "Blocked by PreHooks")
                 category = result.get("category", "security")
-                return 2, f"BLOCKED [{category}]: {reason}"
+                return 2, format_block_msg(reason, category)
             return 0, None
     except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
         return None, None  # API failed, fall back to local
@@ -208,7 +218,7 @@ def validate_local(data):
         if check(cmd, allow): return 0, None
         blocked, p = check(cmd, block, block=True)
         if blocked:
-            return 2, f"BLOCKED [{p.get('category','security')}]: {p.get('reason','Blocked by SafeHooks')}"
+            return 2, format_block_msg(p.get('reason','Blocked by PreHooks'), p.get('category','security'))
 
     # Check file path
     path = extract_file_path(data)
@@ -224,21 +234,21 @@ def validate_local(data):
         ]
         for pat, name in sensitive:
             if re.search(pat, path, re.IGNORECASE):
-                return 2, f"BLOCKED: {name} access blocked"
+                return 2, format_block_msg(f"{name} access blocked", "sensitive_file")
 
     # Check URL for data exfiltration patterns
     url = extract_url(data)
     if url:
         blocked, p = check(url, block, block=True)
         if blocked:
-            return 2, f"BLOCKED [{p.get('category','security')}]: {p.get('reason','Blocked by SafeHooks')}"
+            return 2, format_block_msg(p.get('reason','Blocked by PreHooks'), p.get('category','security'))
 
     # Check content for dangerous patterns
     content = extract_content(data)
     if content:
         blocked, p = check(content, block, block=True)
         if blocked:
-            return 2, f"BLOCKED [{p.get('category','security')}]: {p.get('reason','Blocked by SafeHooks')}"
+            return 2, format_block_msg(p.get('reason','Blocked by PreHooks'), p.get('category','security'))
 
     return 0, None
 
