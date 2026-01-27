@@ -92,12 +92,13 @@ All Claude tools share the same configuration at `~/.claude/settings.json`:
 {
   "hooks": {
     "PreToolUse": [
-      {"matcher": "Bash", "hooks": [{"type": "command", "command": "~/.safehooks/validator.py"}]},
-      {"matcher": "Read|Write|Edit", "hooks": [{"type": "command", "command": "~/.safehooks/validator.py"}]}
+      {"matcher": "*", "hooks": [{"type": "command", "command": "~/.safehooks/validator.py"}]}
     ]
   }
 }
 ```
+
+The `*` matcher runs the validator on **all** tool calls.
 
 Docs: [Claude Code Hooks](https://code.claude.com/docs/en/hooks)
 

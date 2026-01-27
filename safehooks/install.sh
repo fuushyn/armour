@@ -18,7 +18,7 @@
 
 set -e
 
-VERSION="1.0.1"
+VERSION="1.1.0"
 SAFEHOOKS_DIR="$HOME/.safehooks"
 REPO_RAW_URL="${SAFEHOOKS_URL:-https://raw.githubusercontent.com/fuushyn/armour/main/safehooks}"
 
@@ -95,7 +95,9 @@ install_patterns() {
 install_validator() {
     cat > "$SAFEHOOKS_DIR/validator.py" << 'SCRIPT'
 #!/usr/bin/env python3
-"""SafeHooks Validator - Security validation for AI coding assistants."""
+"""SafeHooks Validator - Security validation for AI coding assistants.
+Runs on ALL tool calls. Validates commands and file paths against patterns.
+"""
 import json, re, sys, os
 
 SAFEHOOKS_DIR = os.path.expanduser("~/.safehooks")
@@ -106,75 +108,106 @@ def load_json(f):
             return json.load(fp)
     except: return []
 
-def check(cmd, patterns, block=False):
+def check(text, patterns, block=False):
+    if not text: return (False, None) if block else False
     for p in patterns:
         try:
-            if re.search(p["pattern"], cmd, re.IGNORECASE):
+            if re.search(p["pattern"], text, re.IGNORECASE):
                 return (True, p) if block else True
         except: pass
     return (False, None) if block else False
 
-def validate_cmd(data):
-    # Handle different input formats from various tools
+def extract_command(data):
+    """Extract command from various tool input formats."""
+    # Direct command field
     cmd = (data.get("tool_input", {}).get("command") or
            data.get("arguments", {}).get("command") or
            data.get("tool_info", {}).get("command_line") or
-           data.get("tool_info", {}).get("command") or
-           data.get("toolArgs", {}).get("command") if isinstance(data.get("toolArgs"), dict) else None or
-           "")
+           data.get("tool_info", {}).get("command") or "")
 
-    # Try parsing toolArgs if it's a JSON string (GitHub Copilot format)
+    # GitHub Copilot: toolArgs as JSON string
     if not cmd and isinstance(data.get("toolArgs"), str):
         try:
             args = json.loads(data["toolArgs"])
             cmd = args.get("command", "")
         except: pass
+    elif not cmd and isinstance(data.get("toolArgs"), dict):
+        cmd = data["toolArgs"].get("command", "")
 
-    if not cmd: return 0, None
+    return cmd
 
-    if check(cmd, load_json("allow-patterns.json")):
-        return 0, None
-
-    blocked, p = check(cmd, load_json("block-patterns.json"), block=True)
-    if blocked:
-        return 2, f"BLOCKED [{p.get('category','security')}]: {p.get('reason','Blocked by SafeHooks')}"
-    return 0, None
-
-def validate_file(data):
-    path = (data.get("tool_input", {}).get("file_path") or
+def extract_file_path(data):
+    """Extract file path from various tool input formats."""
+    return (data.get("tool_input", {}).get("file_path") or
             data.get("tool_info", {}).get("file_path") or
-            data.get("arguments", {}).get("file_path") or "")
-    if not path: return 0, None
+            data.get("arguments", {}).get("file_path") or
+            data.get("tool_input", {}).get("path") or
+            data.get("tool_info", {}).get("path") or "")
 
-    sensitive = [
-        (r"\.env($|\.)", "Environment file"),
-        (r"\.ssh/", "SSH directory"),
-        (r"\.aws/credentials", "AWS credentials"),
-        (r"(^|/)\.git/config$", "Git config"),
-        (r"(^|/)secrets?\.json$", "Secrets file"),
-    ]
-    for pat, name in sensitive:
-        if re.search(pat, path, re.IGNORECASE):
-            return 2, f"BLOCKED: {name} access blocked"
+def extract_url(data):
+    """Extract URL from various tool input formats."""
+    return (data.get("tool_input", {}).get("url") or
+            data.get("arguments", {}).get("url") or
+            data.get("tool_info", {}).get("url") or "")
+
+def extract_content(data):
+    """Extract content/text that might contain dangerous patterns."""
+    return (data.get("tool_input", {}).get("content") or
+            data.get("tool_input", {}).get("text") or
+            data.get("tool_input", {}).get("query") or
+            data.get("tool_info", {}).get("user_prompt") or "")
+
+def validate(data):
+    """Validate all extractable fields against patterns."""
+    allow = load_json("allow-patterns.json")
+    block = load_json("block-patterns.json")
+
+    # Check command
+    cmd = extract_command(data)
+    if cmd:
+        if check(cmd, allow): return 0, None
+        blocked, p = check(cmd, block, block=True)
+        if blocked:
+            return 2, f"BLOCKED [{p.get('category','security')}]: {p.get('reason','Blocked by SafeHooks')}"
+
+    # Check file path
+    path = extract_file_path(data)
+    if path:
+        sensitive = [
+            (r"\.env($|\.)", "Environment file"),
+            (r"\.ssh/", "SSH directory"),
+            (r"\.aws/credentials", "AWS credentials"),
+            (r"(^|/)\.git/config$", "Git config"),
+            (r"(^|/)secrets?\.json$", "Secrets file"),
+            (r"(^|/)\.gnupg/", "GPG directory"),
+            (r"(^|/)\.kube/config", "Kubernetes config"),
+        ]
+        for pat, name in sensitive:
+            if re.search(pat, path, re.IGNORECASE):
+                return 2, f"BLOCKED: {name} access blocked"
+
+    # Check URL for data exfiltration patterns
+    url = extract_url(data)
+    if url:
+        blocked, p = check(url, block, block=True)
+        if blocked:
+            return 2, f"BLOCKED [{p.get('category','security')}]: {p.get('reason','Blocked by SafeHooks')}"
+
+    # Check content for dangerous patterns (code injection, etc)
+    content = extract_content(data)
+    if content:
+        blocked, p = check(content, block, block=True)
+        if blocked:
+            return 2, f"BLOCKED [{p.get('category','security')}]: {p.get('reason','Blocked by SafeHooks')}"
+
     return 0, None
 
 def main():
     try:
         data = json.load(sys.stdin)
-    except: sys.exit(1)
+    except: sys.exit(0)  # Invalid input = allow (fail-open)
 
-    # Determine tool type from various formats
-    tool = (data.get("tool_name") or data.get("tool") or
-            data.get("toolName") or data.get("agent_action_name") or "").lower()
-
-    # Map various tool names to validation type
-    if tool in ("bash", "shell", "exec", "run_shell_command", "pre_run_command", "beforeshellexecution"):
-        code, msg = validate_cmd(data)
-    elif tool in ("read", "write", "edit", "write_file", "read_file", "pre_read_code", "pre_write_code", "beforereadfile"):
-        code, msg = validate_file(data)
-    else:
-        code, msg = 0, None
-
+    code, msg = validate(data)
     if msg: print(msg, file=sys.stderr)
     sys.exit(code)
 
@@ -202,14 +235,12 @@ install_claude() {
         jq --arg cmd "$SAFEHOOKS_DIR/validator.py" '
             .hooks = (.hooks // {}) |
             .hooks.PreToolUse = (.hooks.PreToolUse // []) + [
-                {"matcher": "Bash", "hooks": [{"type": "command", "command": $cmd}]},
-                {"matcher": "Read|Write|Edit", "hooks": [{"type": "command", "command": $cmd}]}
+                {"matcher": "*", "hooks": [{"type": "command", "command": $cmd}]}
             ]' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
     else
         cat > "$f" << EOF
 {"hooks":{"PreToolUse":[
-  {"matcher":"Bash","hooks":[{"type":"command","command":"$SAFEHOOKS_DIR/validator.py"}]},
-  {"matcher":"Read|Write|Edit","hooks":[{"type":"command","command":"$SAFEHOOKS_DIR/validator.py"}]}
+  {"matcher":"*","hooks":[{"type":"command","command":"$SAFEHOOKS_DIR/validator.py"}]}
 ]}}
 EOF
     fi
@@ -243,20 +274,16 @@ install_cursor() {
         cp "$f" "$f.backup.$(date +%s)"
         jq --arg cmd "$SAFEHOOKS_DIR/validator.py" '
             .hooks = (.hooks // {}) |
-            .hooks.preToolUse = (.hooks.preToolUse // []) + [{"command": $cmd, "timeout": 30}] |
-            .hooks.beforeShellExecution = (.hooks.beforeShellExecution // []) + [{"command": $cmd, "timeout": 30}] |
-            .hooks.beforeReadFile = (.hooks.beforeReadFile // []) + [{"command": $cmd, "timeout": 30}]
+            .hooks.preToolUse = (.hooks.preToolUse // []) + [{"command": $cmd, "timeout": 30}]
         ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
     else
         cat > "$f" << EOF
 {"version":1,"hooks":{
-  "preToolUse":[{"command":"$SAFEHOOKS_DIR/validator.py","timeout":30}],
-  "beforeShellExecution":[{"command":"$SAFEHOOKS_DIR/validator.py","timeout":30}],
-  "beforeReadFile":[{"command":"$SAFEHOOKS_DIR/validator.py","timeout":30}]
+  "preToolUse":[{"command":"$SAFEHOOKS_DIR/validator.py","timeout":30}]
 }}
 EOF
     fi
-    log_success "Cursor configured (preToolUse + beforeShellExecution)"
+    log_success "Cursor configured (preToolUse on all tools)"
     log_dim "Settings: $f"
     ((INSTALLED++))
 }
@@ -279,6 +306,7 @@ install_windsurf() {
     local f="$HOME/.codeium/windsurf/hooks.json"
     mkdir -p "$HOME/.codeium/windsurf"
 
+    # Windsurf doesn't have a universal pre-hook, need to hook each event type
     if [ -f "$f" ]; then
         jq -e '.hooks | to_entries[] | select(.value[]?.command | contains("safehooks"))' "$f" &>/dev/null && {
             log_dim "Windsurf: already configured"; return; }
@@ -287,18 +315,22 @@ install_windsurf() {
             .hooks = (.hooks // {}) |
             .hooks.pre_run_command = (.hooks.pre_run_command // []) + [{"command": $cmd}] |
             .hooks.pre_read_code = (.hooks.pre_read_code // []) + [{"command": $cmd}] |
-            .hooks.pre_write_code = (.hooks.pre_write_code // []) + [{"command": $cmd}]
+            .hooks.pre_write_code = (.hooks.pre_write_code // []) + [{"command": $cmd}] |
+            .hooks.pre_mcp_tool_use = (.hooks.pre_mcp_tool_use // []) + [{"command": $cmd}] |
+            .hooks.pre_user_prompt = (.hooks.pre_user_prompt // []) + [{"command": $cmd}]
         ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
     else
         cat > "$f" << EOF
 {"hooks":{
   "pre_run_command":[{"command":"$SAFEHOOKS_DIR/validator.py"}],
   "pre_read_code":[{"command":"$SAFEHOOKS_DIR/validator.py"}],
-  "pre_write_code":[{"command":"$SAFEHOOKS_DIR/validator.py"}]
+  "pre_write_code":[{"command":"$SAFEHOOKS_DIR/validator.py"}],
+  "pre_mcp_tool_use":[{"command":"$SAFEHOOKS_DIR/validator.py"}],
+  "pre_user_prompt":[{"command":"$SAFEHOOKS_DIR/validator.py"}]
 }}
 EOF
     fi
-    log_success "Windsurf configured"
+    log_success "Windsurf configured (all pre-hooks)"
     log_dim "Settings: $f"
     ((INSTALLED++))
 }
@@ -328,18 +360,18 @@ install_gemini() {
         jq --arg cmd "$SAFEHOOKS_DIR/validator.py" '
             .hooks = (.hooks // {}) |
             .hooks.BeforeTool = (.hooks.BeforeTool // []) + [{
-                "matcher": "run_shell_command|write_file|read_file",
+                "matcher": ".*",
                 "hooks": [{"type": "command", "command": $cmd, "timeout": 30000}]
             }]' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
     else
         cat > "$f" << EOF
 {"hooks":{"BeforeTool":[{
-  "matcher":"run_shell_command|write_file|read_file",
+  "matcher":".*",
   "hooks":[{"type":"command","command":"$SAFEHOOKS_DIR/validator.py","timeout":30000}]
 }]}}
 EOF
     fi
-    log_success "Gemini CLI configured"
+    log_success "Gemini CLI configured (all tools)"
     log_dim "Settings: $f"
     ((INSTALLED++))
 }
@@ -416,19 +448,19 @@ install_amp() {
         jq --arg cmd "$SAFEHOOKS_DIR/validator.py" '
             ."amp.hooks" = (."amp.hooks" // []) + [{
                 "id": "safehooks-validator",
-                "on": {"event": "tool:pre-execute", "tool": ["bash", "write_file", "read_file"]},
+                "on": {"event": "tool:pre-execute"},
                 "action": {"type": "command", "command": $cmd}
             }]' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
     else
         cat > "$f" << EOF
 {"amp.hooks":[{
   "id":"safehooks-validator",
-  "on":{"event":"tool:pre-execute","tool":["bash","write_file","read_file"]},
+  "on":{"event":"tool:pre-execute"},
   "action":{"type":"command","command":"$SAFEHOOKS_DIR/validator.py"}
 }]}
 EOF
     fi
-    log_success "Amp Code configured"
+    log_success "Amp Code configured (all tools)"
     log_dim "Settings: $f"
     ((INSTALLED++))
 }
