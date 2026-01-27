@@ -248,48 +248,32 @@
     </section>
 
     <script>
-        // --- Data ---
-        const blockPatterns = [
-  { "pattern": "rm\\s+(-rf|-fr|--recursive)\\s+[\\/~]", "level": 10, "reason": "Recursive delete on root/home", "category": "critical_deletion" },
-  { "pattern": "mkfs|dd\\s+if=.*of=\\/dev", "level": 10, "reason": "Disk format/overwrite", "category": "disk_destruction" },
-  { "pattern": ">\\s*\\/dev\\/(sda|hda|nvme|disk)", "level": 10, "reason": "Direct disk write", "category": "disk_destruction" },
-  { "pattern": "chmod\\s+-R\\s+777\\s+\\/", "level": 9, "reason": "Recursive permission change on root", "category": "permission_escalation" },
-  { "pattern": ">\\s*\\/etc\\/(passwd|shadow|sudoers)", "level": 10, "reason": "Overwrite system auth files", "category": "privilege_escalation" },
-  { "pattern": "sudo\\s+rm|sudo\\s+chmod|sudo\\s+chown.*\\/", "level": 8, "reason": "Privileged file operation", "category": "privilege_escalation" },
-  { "pattern": ":\\(\\) \\{\\s*:\\|:&\\s*\\\\};:", "level": 10, "reason": "Fork bomb", "category": "dos" },
-  { "pattern": "while\\s*(true|1|:).*do", "level": 7, "reason": "Infinite loop", "category": "dos" },
-  { "pattern": "curl.*\\|\\s*(ba)?sh|wget.*\\|\\s*(ba)?sh", "level": 8, "reason": "Pipe to shell execution", "category": "remote_code_exec" },
-  { "pattern": "eval\\s*\\(.*\\$|exec\\s*\\(.*\\$", "level": 8, "reason": "Dynamic code execution with variable", "category": "code_injection" },
-  { "pattern": "curl.*-d.*\\$\\(cat|wget.*--post-data.*\\$\\(cat", "level": 8, "reason": "Exfiltrating file contents", "category": "data_exfil" },
-  { "pattern": "nc\\s+-e|ncat\\s+-e|netcat.*-e", "level": 9, "reason": "Reverse shell via netcat", "category": "reverse_shell" },
-  { "pattern": "crontab.*\\*(\\/|\\s)|\\*\\/\\d+\\s+\\*", "level": 7, "reason": "Cron job installation", "category": "persistence" },
-  { "pattern": "xmrig|minerd|cgminer|cpuminer", "level": 9, "reason": "Crypto miner detected", "category": "cryptomining" }
-];
+        // --- Fetch all data from GitHub via worker proxy ---
+        async function loadPatterns() {
+            try {
+                const [blockRes, allowRes, promptRes] = await Promise.all([
+                    fetch('/block-patterns.json'),
+                    fetch('/allow-patterns.json'),
+                    fetch('/prompt.txt')
+                ]);
 
-        const allowPatterns = [
-  { "pattern": "^(ls|pwd|whoami|date|cal|uptime|hostname|uname|df|du|free|top|htop|ps)\\b", "tools": ["exec", "bash", "Bash"] },
-  { "pattern": "^git\\s+(status|log|diff|branch|show|remote|fetch|ls-files|rev-parse)", "tools": ["exec", "bash", "Bash"] },
-  { "pattern": "^(npm|yarn|pnpm|bun)\\s+(list|outdated|view|info|show|ls)", "tools": ["exec", "bash", "Bash"] },
-  { "pattern": "^cat\\s+(?!.*\\/etc)(?!.*\\.env)(?!.*\\.ssh)", "tools": ["exec", "bash", "Bash"] },
-  { "pattern": "^echo\\s", "tools": ["exec", "bash", "Bash"] }
-];
+                const blockPatterns = await blockRes.json();
+                const allowPatterns = await allowRes.json();
+                const promptText = await promptRes.text();
 
-        // --- Init Code Blocks ---
-        document.getElementById('code-block').textContent = JSON.stringify(blockPatterns, null, 2);
-        document.getElementById('code-allow').textContent = JSON.stringify(allowPatterns, null, 2);
-
-        // Fetch prompt from GitHub via worker proxy
-        fetch('/prompt.txt')
-            .then(r => r.text())
-            .then(text => {
-                document.getElementById('code-prompt').textContent = text;
+                document.getElementById('code-block').textContent = JSON.stringify(blockPatterns, null, 2);
+                document.getElementById('code-allow').textContent = JSON.stringify(allowPatterns, null, 2);
+                document.getElementById('code-prompt').textContent = promptText;
                 Prism.highlightAll();
-            })
-            .catch(() => {
-                document.getElementById('code-prompt').textContent = 'Failed to load prompt';
-            });
+            } catch (err) {
+                console.error('Failed to load patterns:', err);
+                document.getElementById('code-block').textContent = 'Failed to load';
+                document.getElementById('code-allow').textContent = 'Failed to load';
+                document.getElementById('code-prompt').textContent = 'Failed to load';
+            }
+        }
 
-        Prism.highlightAll();
+        loadPatterns();
 
         // --- Tabs ---
         function showTab(tab) {
