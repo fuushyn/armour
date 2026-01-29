@@ -165,7 +165,27 @@
                         </div>
                     </div>
 
-                    <div class="pt-8 md:pt-20 animate-bounce opacity-30">
+                    <!-- Live Stats -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 pt-6 md:pt-12 max-w-2xl mx-auto">
+                        <div class="text-center">
+                            <div class="font-mono text-xl md:text-3xl font-bold text-accent neon-text" id="stat-blocked">—</div>
+                            <div class="font-mono text-[8px] md:text-[10px] text-dim uppercase tracking-widest mt-1">Threats Blocked</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-mono text-xl md:text-3xl font-bold text-text" id="stat-total">—</div>
+                            <div class="font-mono text-[8px] md:text-[10px] text-dim uppercase tracking-widest mt-1">Calls Analyzed</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-mono text-xl md:text-3xl font-bold text-text" id="stat-latency">—</div>
+                            <div class="font-mono text-[8px] md:text-[10px] text-dim uppercase tracking-widest mt-1">Avg Latency</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-mono text-xl md:text-3xl font-bold text-danger neon-danger" id="stat-rate">—</div>
+                            <div class="font-mono text-[8px] md:text-[10px] text-dim uppercase tracking-widest mt-1">Block Rate</div>
+                        </div>
+                    </div>
+
+                    <div class="pt-6 md:pt-12 animate-bounce opacity-30">
                         <p class="text-[9px] md:text-[10px] font-mono uppercase tracking-widest text-dim mb-2 text-center">Scroll to Initialize</p>
                         <svg width="16" height="16" class="md:w-5 md:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-dim mx-auto"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>
                     </div>
@@ -402,6 +422,23 @@
         snapContainer.addEventListener('scroll', updateTerminal);
         // Also trigger on load
         updateTerminal();
+
+        // --- Live Stats ---
+        async function loadStats() {
+            try {
+                const res = await fetch('https://clawdguard.prehooks.workers.dev/stats');
+                const data = await res.json();
+                document.getElementById('stat-blocked').textContent = data.blocked.toLocaleString();
+                document.getElementById('stat-total').textContent = data.total.toLocaleString();
+                document.getElementById('stat-latency').textContent = data.latency.avg + 'ms';
+                const rate = data.total > 0 ? ((data.blocked / data.total) * 100).toFixed(1) : '0';
+                document.getElementById('stat-rate').textContent = rate + '%';
+            } catch (e) {
+                console.error('Stats fetch failed:', e);
+            }
+        }
+        loadStats();
+        setInterval(loadStats, 30000);
     </script>
 </body>
 </html>
