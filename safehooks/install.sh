@@ -167,7 +167,7 @@ def call_api(tool, params):
         req = urllib.request.Request(
             API_URL,
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "User-Agent": "SafeHooks/1.0"},
             method="POST"
         )
 
